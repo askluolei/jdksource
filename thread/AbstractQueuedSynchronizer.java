@@ -628,9 +628,6 @@ public abstract class AbstractQueuedSynchronizer
         /*
          * 如果本节点的状态值 < 0 ，则设置为0，cas操作失败了也没关系，可能状态被等待的线程修改了
          * 修改的原因是，当前节点不需要等待锁资源，将要唤醒下一个节点
-         * If status is negative (i.e., possibly needing signal) try
-         * to clear in anticipation of signalling.  It is OK if this
-         * fails or if status is changed by waiting thread.
          */
         int ws = node.waitStatus;
         if (ws < 0)
@@ -638,11 +635,7 @@ public abstract class AbstractQueuedSynchronizer
 
         /*
          * 找到下一个节点，如果不为null，并且没有取消（状态值），则下一个节点就是继承人
-         * 如果不满足上面的条件，就从尾节点开始，向前寻找未取消的节点(一直寻找，最后满足的那个)
-         * Thread to unpark is held in successor, which is normally
-         * just the next node.  But if cancelled or apparently null,
-         * traverse backwards from tail to find the actual
-         * non-cancelled successor.
+         * 如果不满足上面的条件，就从尾节点开始，向前寻找(到当前节点的位置)未取消的节点(一直寻找，最后满足的那个)
          */
         Node s = node.next;
         if (s == null || s.waitStatus > 0) {
@@ -736,41 +729,31 @@ public abstract class AbstractQueuedSynchronizer
      * @param node the node
      */
     private void cancelAcquire(Node node) {
-        // Ignore if node doesn't exist
         if (node == null)
             return;
 
         node.thread = null;
 
-        // Skip cancelled predecessors
         // 跳过前置节点状态大于0的节点（出队列）
         Node pred = node.prev;
         while (pred.waitStatus > 0)
             node.prev = pred = pred.prev;
 
-        // predNext is the apparent node to unsplice. CASes below will
-        // fail if not, in which case, we lost race vs another cancel
-        // or signal, so no further action is necessary.
         // pred 是 node 的前置节点，predNext 是 pred.next ，那么显然是 node 节点
         Node predNext = pred.next;
 
-        // Can use unconditional write instead of CAS here.
-        // After this atomic step, other Nodes can skip past us.
-        // Before, we are free of interference from other threads.
         // 设置 node 节点的等待状态为 取消
         node.waitStatus = Node.CANCELLED;
 
-        // If we are the tail, remove ourselves.
         // 如果是尾节点，那就删掉，前置节点设置为尾节点
         if (node == tail && compareAndSetTail(node, pred)) {
             compareAndSetNext(pred, predNext, null);
         } else {
             // node 不是尾节点，或者设置pred为尾节点的时候失败了（有其他节点又加上来了）
-
-            // If successor needs signal, try to set pred's next-link
-            // so it will get one. Otherwise wake it up to propagate.
             int ws;
-            // 如果 pred 不是头节点 并且 ( pred的状态为 SIGNAL, 或者 状态小于等于0)
+            // 如果 pred 不是头节点 并且 ( pred的状态为 SIGNAL, 或者 状态小于等于0并且成功设置为 SIGNAL) 并且 pred 前置节点代表的线程不为null，那就删除当前节点，连接前置节点和后置节点
+            // 这里的条件有点复杂，简单点说，就是看前置节点被设置为是否通知后面节点的状态没，如果设置了，或者如果没有设置，但是现在成功设置了，删除节点，
+            // 否则，现在就尝试激活当前节点的后置节点,看 unparkSuccessor 方法
             if (pred != head &&
                 ((ws = pred.waitStatus) == Node.SIGNAL ||
                  (ws <= 0 && compareAndSetWaitStatus(pred, ws, Node.SIGNAL))) &&
@@ -940,14 +923,18 @@ public abstract class AbstractQueuedSynchronizer
      */
     private boolean doAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
+        // 如果已经超时了，返回 false
         if (nanosTimeout <= 0L)
             return false;
+        // 获取 最后期限
         final long deadline = System.nanoTime() + nanosTimeout;
+        // 提交节点到链表最后
         final Node node = addWaiter(Node.EXCLUSIVE);
         boolean failed = true;
         try {
             for (;;) {
                 final Node p = node.predecessor();
+                // 如果前置节点是头节点，尝试获取获取锁，获取成功返回true
                 if (p == head && tryAcquire(arg)) {
                     setHead(node);
                     p.next = null; // help GC
@@ -955,15 +942,20 @@ public abstract class AbstractQueuedSynchronizer
                     return true;
                 }
                 nanosTimeout = deadline - System.nanoTime();
+                // 如果超时了，返回false
                 if (nanosTimeout <= 0L)
                     return false;
+                // 判断是否需要阻塞 如果离 最后期限只剩1秒了，就不需要阻塞了，一直循环就行了
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     nanosTimeout > spinForTimeoutThreshold)
+                    // 限时阻塞, 阻塞可能是限时等待结束，或者前置节点激活
                     LockSupport.parkNanos(this, nanosTimeout);
+                // 中断标识判断
                 if (Thread.interrupted())
                     throw new InterruptedException();
             }
         } finally {
+            // 中断出去的逻辑
             if (failed)
                 cancelAcquire(node);
         }
@@ -1692,9 +1684,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
-     * Returns true if node is on sync queue by searching backwards from tail.
-     * Called only when needed by isOnSyncQueue.
-     * @return true if present
+     * 从尾节点开始找，判断参数传入的节点是否在链表中
      */
     private boolean findNodeFromTail(Node node) {
         Node t = tail;
@@ -1758,10 +1748,8 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
-     * Invokes release with current state value; returns saved state.
-     * Cancels node and throws exception on failure.
-     * @param node the condition node for this wait
-     * @return previous sync state
+     * 释放本节点持有的 state
+     * 如果释放失败，就标记这个节点为取消状态
      */
     final int fullyRelease(Node node) {
         boolean failed = true;
@@ -1889,16 +1877,17 @@ public abstract class AbstractQueuedSynchronizer
         // Internal methods
 
         /**
-         * Adds a new waiter to wait queue.
+         * 添加一个新的等待节点到条件等待队列队尾
          * @return its new wait node
          */
         private Node addConditionWaiter() {
             Node t = lastWaiter;
-            // If lastWaiter is cancelled, clean out.
+            // 如果最后一个节点取消了，那么清理整个队列中取消的节点
             if (t != null && t.waitStatus != Node.CONDITION) {
                 unlinkCancelledWaiters();
                 t = lastWaiter;
             }
+            // 新建一个mode 为 CONDITION 的节点
             Node node = new Node(Thread.currentThread(), Node.CONDITION);
             if (t == null)
                 firstWaiter = node;
@@ -1938,18 +1927,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
-         * Unlinks cancelled waiter nodes from condition queue.
-         * Called only while holding lock. This is called when
-         * cancellation occurred during condition wait, and upon
-         * insertion of a new waiter when lastWaiter is seen to have
-         * been cancelled. This method is needed to avoid garbage
-         * retention in the absence of signals. So even though it may
-         * require a full traversal, it comes into play only when
-         * timeouts or cancellations occur in the absence of
-         * signals. It traverses all nodes rather than stopping at a
-         * particular target to unlink all pointers to garbage nodes
-         * without requiring many re-traversals during cancellation
-         * storms.
+         * 从条件队列清除取消的等待节点，这个方法只应该被持有锁的线程调用
          */
         private void unlinkCancelledWaiters() {
             Node t = firstWaiter;
@@ -2077,9 +2055,12 @@ public abstract class AbstractQueuedSynchronizer
          * </ol>
          */
         public final void await() throws InterruptedException {
+            // 如果中断了，就抛中断异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            // 添加一个节点到条件队列尾部
             Node node = addConditionWaiter();
+            // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
             int interruptMode = 0;
             while (!isOnSyncQueue(node)) {
