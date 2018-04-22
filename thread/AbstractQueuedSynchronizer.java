@@ -562,6 +562,7 @@ public abstract class AbstractQueuedSynchronizer
 
     /**
      * 节点入队，如果队列还没初始化，则进行初始化,建立头尾节点（就是一个新节点，头尾引用指向它，后面尾节点会指向加入的节点）
+     * 返回的是前置节点
      * Inserts node into queue, initializing if necessary. See picture above.
      * @param node the node to insert
      * @return node's predecessor
@@ -724,6 +725,7 @@ public abstract class AbstractQueuedSynchronizer
     // Utilities for various versions of acquire
 
     /**
+     * 取消获取
      * Cancels an ongoing attempt to acquire.
      *
      * @param node the node
@@ -915,8 +917,8 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 尝试获取资源，限时
      * Acquires in exclusive timed mode.
-     *
      * @param arg the acquire argument
      * @param nanosTimeout max wait time
      * @return {@code true} if acquired
@@ -1662,6 +1664,7 @@ public abstract class AbstractQueuedSynchronizer
     // Internal support methods for Conditions
 
     /**
+     * 判断一个节点是否在同步队列里面（注意队列有两个，同步队列（双向 prev,next），和 等待队列(单向 nextWatier)）
      * Returns true if a node, always one that was initially placed on
      * a condition queue, is now waiting to reacquire on sync queue.
      * @param node the node
@@ -1684,7 +1687,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
-     * 从尾节点开始找，判断参数传入的节点是否在链表中
+     * 从尾节点开始找，判断参数传入的节点是否在同步队列中
      */
     private boolean findNodeFromTail(Node node) {
         Node t = tail;
@@ -1698,6 +1701,8 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 这个方法的功能就是激活在条件上等待的线程（node里面的）
+     * 将节点从条件队列，丢到同步队列中，成功返回true，失败返回false
      * Transfers a node from a condition queue onto sync queue.
      * Returns true if successful.
      * @param node the node
@@ -1706,12 +1711,16 @@ public abstract class AbstractQueuedSynchronizer
      */
     final boolean transferForSignal(Node node) {
         /*
+         * 如果不能改变 等待状态值，那么这个节点就是取消状态(就是不通知)
          * If cannot change waitStatus, the node has been cancelled.
          */
         if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
             return false;
 
         /*
+         * 将节点插入到同步队列尾部
+         * 如果 前一个节点的等待状态是取消状态，那么设置为 SIGNAL，代表本节点需要收到前一个节点的通知
+         * 如果设置失败，那么立马激活本节点代表的线程，返回true
          * Splice onto queue and try to set waitStatus of predecessor to
          * indicate that thread is (probably) waiting. If cancelled or
          * attempt to set waitStatus fails, wake up to resync (in which
@@ -1725,6 +1734,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 将节点的等待状态设置为取消，如果设置成功，加入节点到同步队列中，返回true，否则返回false
      * Transfers node, if necessary, to sync queue after a cancelled wait.
      * Returns true if thread was cancelled before being signalled.
      *
@@ -1770,6 +1780,7 @@ public abstract class AbstractQueuedSynchronizer
     // Instrumentation methods for conditions
 
     /**
+     * 条件是否由本同步器创建
      * Queries whether the given ConditionObject
      * uses this synchronizer as its lock.
      *
@@ -1782,6 +1793,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 条件上是否有等待节点
      * Queries whether any threads are waiting on the given condition
      * associated with this synchronizer. Note that because timeouts
      * and interrupts may occur at any time, a {@code true} return
@@ -1804,6 +1816,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取条件上的等待队列长度
      * Returns an estimate of the number of threads waiting on the
      * given condition associated with this synchronizer. Note that
      * because timeouts and interrupts may occur at any time, the
@@ -1826,6 +1839,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取条件上的等待线程
      * Returns a collection containing those threads that may be
      * waiting on the given condition associated with this
      * synchronizer.  Because the actual set of threads may change
@@ -1898,6 +1912,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 从参数node，开始，异常，并且转移直到一个没有取消的节点，或者nul
          * Removes and transfers nodes until hit non-cancelled one or
          * null. Split out from signal in part to encourage compilers
          * to inline the case of no waiters.
@@ -1905,19 +1920,24 @@ public abstract class AbstractQueuedSynchronizer
          */
         private void doSignal(Node first) {
             do {
+                // 从first 开始向后遍历
                 if ( (firstWaiter = first.nextWaiter) == null)
                     lastWaiter = null;
+                // first 节点从链表中断开
                 first.nextWaiter = null;
+                // 转换first节点，如果成功，跳出循环，如果失败，继续下一个节点，获取节点为null，跳出循环
             } while (!transferForSignal(first) &&
                      (first = firstWaiter) != null);
         }
 
         /**
+         * 从first开始激活所有等待的节点
          * Removes and transfers all nodes.
          * @param first (non-null) the first node on condition queue
          */
         private void doSignalAll(Node first) {
             lastWaiter = firstWaiter = null;
+            // 逻辑跟上面是一样的，不过就是激活所有节点，所有取消了对 transferForSignal 的结果判断
             do {
                 Node next = first.nextWaiter;
                 first.nextWaiter = null;
@@ -1952,6 +1972,7 @@ public abstract class AbstractQueuedSynchronizer
         // public methods
 
         /**
+         * 激活一个等待节点
          * Moves the longest-waiting thread, if one exists, from the
          * wait queue for this condition to the wait queue for the
          * owning lock.
@@ -1960,14 +1981,17 @@ public abstract class AbstractQueuedSynchronizer
          *         returns {@code false}
          */
         public final void signal() {
+            // 如果锁的持有者不是当前线程，抛异常
             if (!isHeldExclusively())
                 throw new IllegalMonitorStateException();
             Node first = firstWaiter;
+            // 如果等待队列不为空，激活第一个
             if (first != null)
                 doSignal(first);
         }
 
         /**
+         * 激活所有节点
          * Moves all threads from the wait queue for this condition to
          * the wait queue for the owning lock.
          *
@@ -1983,6 +2007,8 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 在条件上等待，不考虑中断
+         * 这个逻辑就简单点
          * Implements uninterruptible condition wait.
          * <ol>
          * <li> Save lock state returned by {@link #getState}.
@@ -1994,14 +2020,21 @@ public abstract class AbstractQueuedSynchronizer
          * </ol>
          */
         public final void awaitUninterruptibly() {
+            // 添加一个节点到条件队列尾部
             Node node = addConditionWaiter();
+            // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
             boolean interrupted = false;
+            // 循环判断，如果当前节点不在同步队列中（当调用 signal 方法的时候，会将节点放入同步队列）
+            // 这里只会被 signal 方法激活，阻塞不会被中断打断
             while (!isOnSyncQueue(node)) {
+                // 阻塞
                 LockSupport.park(this);
                 if (Thread.interrupted())
                     interrupted = true;
             }
+            // 从上面出来后，尝试获取锁，这里还是会触发等待锁的阻塞（如果要等的话），获取成功，处理了继续判断中断状态
+            // 不抛异常，只设置中断标记
             if (acquireQueued(node, savedState) || interrupted)
                 selfInterrupt();
         }
@@ -2019,6 +2052,7 @@ public abstract class AbstractQueuedSynchronizer
         private static final int THROW_IE    = -1;
 
         /**
+         * 判断是否有异常，如果有，继续尝试取消等待节点状态，如果失败，返回抛异常标记，尝试取消成功，返回重新设置中断状态标记，如果没有异常返回0
          * Checks for interrupt, returning THROW_IE if interrupted
          * before signalled, REINTERRUPT if after signalled, or
          * 0 if not interrupted.
@@ -2030,6 +2064,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 根据中断标记，抛异常，或者设置中断状态
          * Throws InterruptedException, reinterrupts current thread, or
          * does nothing, depending on mode.
          */
@@ -2042,6 +2077,13 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 在条件上等待
+         * 1. 如果当前线程已经中断，则抛 InterruptedException 异常
+         * 2. 保存当前 getState 状态
+         * 3. 释放 state，如果失败，就抛 IllegalMonitorStateException。（当前线程必须持有锁）
+         * 4. 阻塞，直到被激活（signal或者中断）
+         * 5. 重新尝试获取之前持有的锁（可能继续等待）
+         * 6. 如果在步骤4，阻塞的时候中断了，抛 InterruptedException
          * Implements interruptible condition wait.
          * <ol>
          * <li> If current thread is interrupted, throw InterruptedException.
@@ -2063,20 +2105,28 @@ public abstract class AbstractQueuedSynchronizer
             // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
             int interruptMode = 0;
+            // 循环判断，如果当前节点不在同步队列中（当调用 signal 方法的时候，会将节点放入同步队列）
             while (!isOnSyncQueue(node)) {
+                // 线程阻塞，正常流程应该是到这里
                 LockSupport.park(this);
+                // 阻塞取消，出来判断中断状态,如果 ！= 0，就是没有中断
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            // 从上面出来后，尝试获取锁，这里还是会触发等待锁的阻塞（如果要等的话），获取成功，处理了继续判断中断状态
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
+            // 如果 当前节点在条件队列上后后续节点，那么清除一遍无效节点
             if (node.nextWaiter != null) // clean up if cancelled
                 unlinkCancelledWaiters();
+            // 如果有中断状态，判断是否要抛异常
             if (interruptMode != 0)
                 reportInterruptAfterWait(interruptMode);
         }
 
         /**
+         * 在条件上等待 nanosTimeout 长时间
+         * 基本跟上面一样
          * Implements timed condition wait.
          * <ol>
          * <li> If current thread is interrupted, throw InterruptedException.
@@ -2091,33 +2141,48 @@ public abstract class AbstractQueuedSynchronizer
          */
         public final long awaitNanos(long nanosTimeout)
                 throws InterruptedException {
+            // 如果中断了，就抛中断异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            // 添加一个节点到条件队列尾部
             Node node = addConditionWaiter();
+            // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
+            // 阻塞的截至时间
             final long deadline = System.nanoTime() + nanosTimeout;
             int interruptMode = 0;
+            // 循环判断，如果当前节点不在同步队列中（当调用 signal 方法的时候，会将节点放入同步队列）
             while (!isOnSyncQueue(node)) {
+                // 超时，跳出循环
                 if (nanosTimeout <= 0L) {
+                    // 设置节点状态为取消，如果设置成功，那就是超时，如果设置失败（可能这个节点被激活了，超时就是 false）
                     transferAfterCancelledWait(node);
                     break;
                 }
+                // 如果要阻塞的时间大于 1s，继续限时阻塞（如果小于1s了，就不继续阻塞了，循环直到超时，获取被唤醒，很多地方都是这样的设计）
                 if (nanosTimeout >= spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
+                // 如果有中断，跳出循环
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
+                // 计算离超时时间点的间隔
                 nanosTimeout = deadline - System.nanoTime();
             }
+            // 从上面出来后，尝试获取锁，这里还是会触发等待锁的阻塞（如果要等的话），获取成功，处理了继续判断中断状态
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
+            // 如果 当前节点在条件队列上后后续节点，那么清除一遍无效节点
             if (node.nextWaiter != null)
                 unlinkCancelledWaiters();
+            // 如果有中断状态，判断是否要抛异常
             if (interruptMode != 0)
                 reportInterruptAfterWait(interruptMode);
             return deadline - System.nanoTime();
         }
 
         /**
+         * 在条件上等待，直到给定时间点
+         * 基本同上
          * Implements absolute timed condition wait.
          * <ol>
          * <li> If current thread is interrupted, throw InterruptedException.
@@ -2133,32 +2198,47 @@ public abstract class AbstractQueuedSynchronizer
          */
         public final boolean awaitUntil(Date deadline)
                 throws InterruptedException {
+            // 阻塞的截至时间
             long abstime = deadline.getTime();
+            // 如果中断了，就抛中断异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            // 添加一个节点到条件队列尾部
             Node node = addConditionWaiter();
+            // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
             boolean timedout = false;
             int interruptMode = 0;
+            // 循环判断，如果当前节点不在同步队列中（当调用 signal 方法的时候，会将节点放入同步队列）
             while (!isOnSyncQueue(node)) {
+                // 超时，跳出循环
                 if (System.currentTimeMillis() > abstime) {
+                    // 设置节点状态为取消，如果设置成功，那就是超时，如果设置失败（可能这个节点被激活了，超时就是 false）
                     timedout = transferAfterCancelledWait(node);
                     break;
                 }
+                // 阻塞
                 LockSupport.parkUntil(this, abstime);
+                // 判断中断，如果有，跳出循环
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
             }
+            // 从上面出来后，尝试获取锁，这里还是会触发等待锁的阻塞（如果要等的话），获取成功，处理了继续判断中断状态
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
+            // 如果 当前节点在条件队列上后后续节点，那么清除一遍无效节点
             if (node.nextWaiter != null)
                 unlinkCancelledWaiters();
+            // 如果有中断状态，判断是否要抛异常
             if (interruptMode != 0)
                 reportInterruptAfterWait(interruptMode);
+            // 如果超时，返回false
             return !timedout;
         }
 
         /**
+         * 在条件上限时等待
+         * 基本同上
          * Implements timed condition wait.
          * <ol>
          * <li> If current thread is interrupted, throw InterruptedException.
@@ -2175,36 +2255,50 @@ public abstract class AbstractQueuedSynchronizer
         public final boolean await(long time, TimeUnit unit)
                 throws InterruptedException {
             long nanosTimeout = unit.toNanos(time);
+            // 如果中断了，就抛中断异常
             if (Thread.interrupted())
                 throw new InterruptedException();
+            // 添加一个节点到条件队列尾部
             Node node = addConditionWaiter();
+            // 释放锁资源（如果没持有锁，会抛异常出来）
             int savedState = fullyRelease(node);
+            // 阻塞的截至时间
             final long deadline = System.nanoTime() + nanosTimeout;
             boolean timedout = false;
             int interruptMode = 0;
+            // 循环判断，如果当前节点不在同步队列中（当调用 signal 方法的时候，会将节点放入同步队列）
             while (!isOnSyncQueue(node)) {
                 if (nanosTimeout <= 0L) {
+                    // 设置节点状态为取消，如果设置成功，那就是超时，如果设置失败（可能这个节点被激活了，超时就是 false）
                     timedout = transferAfterCancelledWait(node);
                     break;
                 }
+                // 如果要阻塞的时间大于 1s，继续限时阻塞（如果小于1s了，就不继续阻塞了，循环直到超时，获取被唤醒，很多地方都是这样的设计）
                 if (nanosTimeout >= spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
+                // 如果有中断，跳出循环
                 if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
                     break;
+                // 计算离超时时间点的间隔
                 nanosTimeout = deadline - System.nanoTime();
             }
+            // 从上面出来后，尝试获取锁，这里还是会触发等待锁的阻塞（如果要等的话），获取成功，处理了继续判断中断状态
             if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
                 interruptMode = REINTERRUPT;
+            // 如果 当前节点在条件队列上后后续节点，那么清除一遍无效节点
             if (node.nextWaiter != null)
                 unlinkCancelledWaiters();
+            // 如果有中断状态，判断是否要抛异常
             if (interruptMode != 0)
                 reportInterruptAfterWait(interruptMode);
+            // 如果超时，返回false
             return !timedout;
         }
 
         //  support for instrumentation
 
         /**
+         * 条件的创建者是否是给定同步器
          * Returns true if this condition was created by the given
          * synchronization object.
          *
@@ -2215,6 +2309,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 是否有节点在条件上等待
          * Queries whether any threads are waiting on this condition.
          * Implements {@link AbstractQueuedSynchronizer#hasWaiters(ConditionObject)}.
          *
@@ -2233,6 +2328,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 获取等待节点数量
          * Returns an estimate of the number of threads waiting on
          * this condition.
          * Implements {@link AbstractQueuedSynchronizer#getWaitQueueLength(ConditionObject)}.
@@ -2253,6 +2349,7 @@ public abstract class AbstractQueuedSynchronizer
         }
 
         /**
+         * 获取等待的线程对象
          * Returns a collection containing those threads that may be
          * waiting on this Condition.
          * Implements {@link AbstractQueuedSynchronizer#getWaitingThreads(ConditionObject)}.
@@ -2277,6 +2374,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 这里是 unsafe 相关的字段，主要用来 CAS 操作
      * Setup to support compareAndSet. We need to natively implement
      * this here: For the sake of permitting future enhancements, we
      * cannot explicitly subclass AtomicInteger, which would be
@@ -2309,6 +2407,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * CAS 设置头节点
      * CAS head field. Used only by enq.
      */
     private final boolean compareAndSetHead(Node update) {
@@ -2316,6 +2415,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * CAS 设置尾节点
      * CAS tail field. Used only by enq.
      */
     private final boolean compareAndSetTail(Node expect, Node update) {
@@ -2323,6 +2423,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * CAS 设置节点的等待状态
      * CAS waitStatus field of a node.
      */
     private static final boolean compareAndSetWaitStatus(Node node,
@@ -2333,6 +2434,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * CAS 设置节点的next节点
      * CAS next field of a node.
      */
     private static final boolean compareAndSetNext(Node node,
