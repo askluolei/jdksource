@@ -1508,6 +1508,10 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 判断是否有其他线程比当前线程等待的时间还要长(是否有其他线程排在自己前面)
+     * 就是判断头节点的后一个节点是否为当前线程
+     */
+    /**
      * Queries whether any threads have been waiting to acquire longer
      * than the current thread.
      *

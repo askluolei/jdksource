@@ -273,7 +273,7 @@ public interface Condition {
     void awaitUninterruptibly();
 
     /**
-     * 
+     * 限时等待
      */
     /**
      * Causes the current thread to wait until it is signalled or interrupted,
@@ -367,6 +367,9 @@ public interface Condition {
     long awaitNanos(long nanosTimeout) throws InterruptedException;
 
     /**
+     * 限时等待
+     */
+    /**
      * Causes the current thread to wait until it is signalled or interrupted,
      * or the specified waiting time elapses. This method is behaviorally
      * equivalent to:
@@ -381,6 +384,9 @@ public interface Condition {
      */
     boolean await(long time, TimeUnit unit) throws InterruptedException;
 
+    /**
+     * 限时等待
+     */
     /**
      * Causes the current thread to wait until it is signalled or interrupted,
      * or the specified deadline elapses.
@@ -459,6 +465,9 @@ public interface Condition {
     boolean awaitUntil(Date deadline) throws InterruptedException;
 
     /**
+     * 激活一个阻塞线程
+     */
+    /**
      * Wakes up one waiting thread.
      *
      * <p>If any threads are waiting on this condition then one
@@ -476,6 +485,9 @@ public interface Condition {
      */
     void signal();
 
+    /**
+     * 激活所有阻塞线程
+     */
     /**
      * Wakes up all waiting threads.
      *
