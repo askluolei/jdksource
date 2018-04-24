@@ -986,6 +986,9 @@ public abstract class AbstractQueuedSynchronizer
 
     /**
      * 获取shared 模式的锁，不响应中断（不抛中断异常）
+     * 获取 共享资源 跟 独占资源的区别就是
+     * 共享资源获取到了后，会激活后面的共享节点
+     * 而独占资源获取到了后，只是设置自己为头节点
      */
     /**
      * Acquires in shared uninterruptible mode.
