@@ -427,8 +427,12 @@ public class ReentrantReadWriteLock
             return true;
         }
 
+        /**
+         * 尝试释放共享资源
+         */
         protected final boolean tryReleaseShared(int unused) {
             Thread current = Thread.currentThread();
+            // 建少线程持有的读锁数量
             if (firstReader == current) {
                 // assert firstReaderHoldCount > 0;
                 if (firstReaderHoldCount == 1)
@@ -447,9 +451,11 @@ public class ReentrantReadWriteLock
                 }
                 --rh.count;
             }
+            // 循环保证成功
             for (;;) {
                 int c = getState();
                 int nextc = c - SHARED_UNIT;
+                // 这里才是真正修改读锁数量的地方，修改成功，判断读锁的数量是否为0，如果是，那就可以释放共享资源了
                 if (compareAndSetState(c, nextc))
                     // Releasing the read lock has no effect on readers,
                     // but it may allow waiting writers to proceed if
@@ -539,18 +545,24 @@ public class ReentrantReadWriteLock
              * retries and lazily reading hold counts.
              */
             HoldCounter rh = null;
+            // 循环尝试
             for (;;) {
                 int c = getState();
+                // 如果有其他线程获取写锁，返回失败
                 if (exclusiveCount(c) != 0) {
                     if (getExclusiveOwnerThread() != current)
                         return -1;
                     // else we hold the exclusive lock; blocking here
                     // would cause deadlock.
                 } else if (readerShouldBlock()) {
+                    // 当获取读锁需要被阻塞
                     // Make sure we're not acquiring read lock reentrantly
                     if (firstReader == current) {
                         // assert firstReaderHoldCount > 0;
+                        // 第一个获取读锁的线程不管
                     } else {
+                        // 重点在这里。readerShouldBlock 影响
+                        // 其他线程，如果该线程已经持有读锁了，继续后面的逻辑，没有持有，那就返回失败
                         if (rh == null) {
                             rh = cachedHoldCounter;
                             if (rh == null || rh.tid != getThreadId(current)) {
@@ -559,19 +571,25 @@ public class ReentrantReadWriteLock
                                     readHolds.remove();
                             }
                         }
+                        // 其他新线程想要获取读锁，返回失败
                         if (rh.count == 0)
                             return -1;
                     }
                 }
+                // 读锁最大数量检查
                 if (sharedCount(c) == MAX_COUNT)
                     throw new Error("Maximum lock count exceeded");
+                // 读锁总数 + 1，如果失败，可能其他读锁操作了，外层循环，继续重新尝试
                 if (compareAndSetState(c, c + SHARED_UNIT)) {
+                    // 如果读锁刚开始为0，则是第一个获取读锁的
                     if (sharedCount(c) == 0) {
                         firstReader = current;
                         firstReaderHoldCount = 1;
                     } else if (firstReader == current) {
+                        // 不为0，如果还是第一个获取读锁的线程
                         firstReaderHoldCount++;
                     } else {
+                        // 否则就是其他线程获取锁了
                         if (rh == null)
                             rh = cachedHoldCounter;
                         if (rh == null || rh.tid != getThreadId(current))
@@ -608,21 +626,29 @@ public class ReentrantReadWriteLock
         }
 
         /**
+         * 尝试获取读锁
+         */
+        /**
          * Performs tryLock for read, enabling barging in both modes.
          * This is identical in effect to tryAcquireShared except for
          * lack of calls to readerShouldBlock.
          */
         final boolean tryReadLock() {
             Thread current = Thread.currentThread();
+            // 循环中保证有结果
             for (;;) {
                 int c = getState();
+                // 如果有写锁了，返回 false
                 if (exclusiveCount(c) != 0 &&
                     getExclusiveOwnerThread() != current)
                     return false;
                 int r = sharedCount(c);
+                // 读锁达到最大数量
                 if (r == MAX_COUNT)
                     throw new Error("Maximum lock count exceeded");
+                // 尝试获取读锁，如果 CAS 操作失败，可能是同时有其他读锁在修改，继续循环
                 if (compareAndSetState(c, c + SHARED_UNIT)) {
+                    // 下面就是设置 是否是读锁的第一个线程，或者本线程是否是第一次获取读锁，设置数量
                     if (r == 0) {
                         firstReader = current;
                         firstReaderHoldCount = 1;
@@ -974,6 +1000,9 @@ public class ReentrantReadWriteLock
             sync = lock.sync;
         }
 
+        /**
+         * 获取写锁，就是重入锁的逻辑
+         */
         /**
          * Acquires the write lock.
          *

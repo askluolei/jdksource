@@ -653,6 +653,9 @@ public abstract class AbstractQueuedSynchronizer
     /**
      * 共享模式释放，发信号给继承人，并且确保传播
      * 独占模式，只需要发信号给继承人
+     * 这翻译，就是判断头节点的等待状态，如果是 SIGNAL 那么尝试修改为0，然后通知下一个节点（这个是规则）
+     * 如果是0，那就修改为 PROPAGATE
+     * 这些操作在循环里面操作，保证成功
      * Release action for shared mode -- signals successor and ensures
      * propagation. (Note: For exclusive mode, release just amounts
      * to calling unparkSuccessor of head if it needs signal.)
@@ -687,6 +690,9 @@ public abstract class AbstractQueuedSynchronizer
         }
     }
 
+    /**
+     * 
+     */
     /**
      * Sets head of queue, and checks if successor may be waiting
      * in shared mode, if so propagating if either propagate > 0 or
@@ -964,27 +970,36 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取shared 模式的锁，不响应中断（不抛中断异常）
+     */
+    /**
      * Acquires in shared uninterruptible mode.
      * @param arg the acquire argument
      */
     private void doAcquireShared(int arg) {
+        // 添加一个共享节点到同步队列尾部
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             boolean interrupted = false;
             for (;;) {
                 final Node p = node.predecessor();
+                // 如果前置节点就是头节点（如果队列新建，头节点不代表任何节点，其他时候，头节点代表持有锁的节点），就在尝试获取
                 if (p == head) {
+                    // 再尝试获取
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        // 获取成功，设置当前节点为头节点,当下一个等待节点不存在，或者是共享节点，则修改头结点的等待状态 PROPAGATE
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
+                        // 中断标识设置
                         if (interrupted)
                             selfInterrupt();
                         failed = false;
                         return;
                     }
                 }
+                // 这里跟重入锁一样了，可能会最后尝试一次，然后阻塞，被中断唤醒也没用
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     interrupted = true;
@@ -996,35 +1011,49 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 响应中断的，获取资源，中断了抛异常
+     * 其他逻辑基本一样
+     */
+    /**
      * Acquires in shared interruptible mode.
      * @param arg the acquire argument
      */
     private void doAcquireSharedInterruptibly(int arg)
         throws InterruptedException {
+        // 添加一个共享节点到同步队列尾部
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
             for (;;) {
+                // 如果前置节点就是头节点（如果队列新建，头节点不代表任何节点，其他时候，头节点代表持有锁的节点），就在尝试获取
                 final Node p = node.predecessor();
                 if (p == head) {
+                    // 再尝试获取
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        // 获取成功，设置当前节点为头节点,当下一个等待节点不存在，或者是共享节点，则修改头结点的等待状态 PROPAGATE
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         failed = false;
                         return;
                     }
                 }
+                // 这里跟重入锁一样了，可能会最后尝试一次，然后阻塞，如果是中断出来的，抛中断异常
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
                     throw new InterruptedException();
             }
         } finally {
+            // 如果中断出来的，取消获取节点
             if (failed)
                 cancelAcquire(node);
         }
     }
 
+    /**
+     * 限时获取共享资源
+     * 获取成功返回true，超时了返回 false
+     */
     /**
      * Acquires in shared timed mode.
      *
@@ -1037,14 +1066,18 @@ public abstract class AbstractQueuedSynchronizer
         if (nanosTimeout <= 0L)
             return false;
         final long deadline = System.nanoTime() + nanosTimeout;
+        // 添加一个共享节点到同步队列
         final Node node = addWaiter(Node.SHARED);
         boolean failed = true;
         try {
+            // 循环
             for (;;) {
                 final Node p = node.predecessor();
                 if (p == head) {
+                    // 如果前一个节点就是头节点，就再尝试获取一下
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
+                        // 获取成功，设置当前节点为头节点,当下一个等待节点不存在，或者是共享节点，则修改头结点的等待状态 PROPAGATE
                         setHeadAndPropagate(node, r);
                         p.next = null; // help GC
                         failed = false;
@@ -1052,15 +1085,20 @@ public abstract class AbstractQueuedSynchronizer
                     }
                 }
                 nanosTimeout = deadline - System.nanoTime();
+                // 超时返回false
                 if (nanosTimeout <= 0L)
                     return false;
+                // 然后就是判断是否需要阻塞了，最后1s的时候就不阻塞了
+                // 判断是否需要阻塞，就是判断前一个节点的等待状态是否是 SIGNAL ，如果不是就修改为 SIGNAL ，然这里再循环一次
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     nanosTimeout > spinForTimeoutThreshold)
                     LockSupport.parkNanos(this, nanosTimeout);
+                // 如果中断了就抛异常
                 if (Thread.interrupted())
                     throw new InterruptedException();
             }
         } finally {
+            // 如果中断出来的，或者超时了，取消获取节点
             if (failed)
                 cancelAcquire(node);
         }
@@ -1309,6 +1347,11 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取共享资源
+     * tryAcquireShared 这是调用子类的实现，如果获取失败
+     * 那么调用 doAcquireShared, 本类实现，不响应中断获取共享资源，获取不到就阻塞
+     */
+    /**
      * Acquires in shared mode, ignoring interrupts.  Implemented by
      * first invoking at least once {@link #tryAcquireShared},
      * returning on success.  Otherwise the thread is queued, possibly
@@ -1324,6 +1367,12 @@ public abstract class AbstractQueuedSynchronizer
             doAcquireShared(arg);
     }
 
+    /**
+     * 响应中断的获取共享资源
+     * 先判断中断，然后
+     * 还行先调用子类实现的 tryAcquireShared
+     * 获取失败了，再调用 doAcquireSharedInterruptibly ,内部的响应中断的获取共享资源，阻塞，中断了抛异常
+     */
     /**
      * Acquires in shared mode, aborting if interrupted.  Implemented
      * by first checking interrupt status, then invoking at least once
@@ -1345,6 +1394,13 @@ public abstract class AbstractQueuedSynchronizer
             doAcquireSharedInterruptibly(arg);
     }
 
+    /**
+     * 尝试获取共享资源，
+     * 最先判断中断
+     * 先调用子类的 tryAcquireShared
+     * 如果失败了，再调用限时等待 doAcquireSharedNanos
+     * 如果中断了，抛中断异常
+     */
     /**
      * Attempts to acquire in shared mode, aborting if interrupted, and
      * failing if the given timeout elapses.  Implemented by first
@@ -1370,6 +1426,11 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 释放共享资源
+     * 先调用子类的 tryReleaseShared
+     * 释放成功，才调用内部的 doReleaseShared
+     */
+    /**
      * Releases in shared mode.  Implemented by unblocking one or more
      * threads if {@link #tryReleaseShared} returns true.
      *
@@ -1379,7 +1440,9 @@ public abstract class AbstractQueuedSynchronizer
      * @return the value returned from {@link #tryReleaseShared}
      */
     public final boolean releaseShared(int arg) {
+        // 先调用子类的 tryReleaseShared
         if (tryReleaseShared(arg)) {
+            // 如果成功，则代表可以释放共享资源了
             doReleaseShared();
             return true;
         }
