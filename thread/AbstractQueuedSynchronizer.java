@@ -299,6 +299,9 @@ public abstract class AbstractQueuedSynchronizer
     protected AbstractQueuedSynchronizer() { }
 
     /**
+     * 内部节点定义 prev next 用来维护双向链表（同步队列），nextWaiter 维护单向列表（条件队列）
+     */
+    /**
      * Wait queue node class.
      *
      * <p>The wait queue is a variant of a "CLH" (Craig, Landin, and
@@ -681,6 +684,8 @@ public abstract class AbstractQueuedSynchronizer
                         continue;            // loop to recheck cases
                     unparkSuccessor(h);
                 }
+                // 这里，譬如很多读锁阻塞，当被一一激活后，最后一个等待节点就会走这里的逻辑
+                // 不清楚设置这个状态的意义是什么
                 else if (ws == 0 &&
                          !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
                     continue;                // loop on failed CAS
@@ -691,7 +696,7 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
-     * 
+     * 设置头节点，并且判断下一个节点是否为共享模式，如果是，就释放一下共享资源给下一个共享节点
      */
     /**
      * Sets head of queue, and checks if successor may be waiting
@@ -896,27 +901,37 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取独占资源，响应中断
+     */
+    /**
      * Acquires in exclusive interruptible mode.
      * @param arg the acquire argument
      */
     private void doAcquireInterruptibly(int arg)
         throws InterruptedException {
+        // 添加独占节点
         final Node node = addWaiter(Node.EXCLUSIVE);
         boolean failed = true;
         try {
+            // 循环获取
             for (;;) {
                 final Node p = node.predecessor();
+                // 前置节点就是头节点，那就再尝试获取一次
                 if (p == head && tryAcquire(arg)) {
+                    // 成功了，就设置为头节点
                     setHead(node);
                     p.next = null; // help GC
                     failed = false;
                     return;
                 }
+                // 尝试失败，判断是否需要阻塞（还可能再去尝试一次，然后设置状态 SIGNAL ），然后阻塞
                 if (shouldParkAfterFailedAcquire(p, node) &&
                     parkAndCheckInterrupt())
+                    // 如果是中断激活的，抛异常
                     throw new InterruptedException();
             }
         } finally {
+            // 如果获取失败，取消节点
             if (failed)
                 cancelAcquire(node);
         }
@@ -1274,6 +1289,9 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取独占资源，响应中断
+     */
+    /**
      * Acquires in exclusive mode, aborting if interrupted.
      * Implemented by first checking interrupt status, then invoking
      * at least once {@link #tryAcquire}, returning on
@@ -1289,12 +1307,18 @@ public abstract class AbstractQueuedSynchronizer
      */
     public final void acquireInterruptibly(int arg)
             throws InterruptedException {
+        // 先判断中断异常
         if (Thread.interrupted())
             throw new InterruptedException();
+        // 调用子类的实现尝试获取一次，如果获取失败
         if (!tryAcquire(arg))
+            // 内部获取方法，获取不到阻塞
             doAcquireInterruptibly(arg);
     }
 
+    /**
+     * 尝试限时等待获取独占资源,响应中断
+     */
     /**
      * Attempts to acquire in exclusive mode, aborting if interrupted,
      * and failing if the given timeout elapses.  Implemented by first
@@ -1314,8 +1338,10 @@ public abstract class AbstractQueuedSynchronizer
      */
     public final boolean tryAcquireNanos(int arg, long nanosTimeout)
             throws InterruptedException {
+        // 判断中断
         if (Thread.interrupted())
             throw new InterruptedException();
+        // 调用子类实现，如果失败 doAcquireNanos
         return tryAcquire(arg) ||
             doAcquireNanos(arg, nanosTimeout);
     }
@@ -1452,6 +1478,9 @@ public abstract class AbstractQueuedSynchronizer
     // Queue inspection methods
 
     /**
+     * 同步队列是否有等待的线程
+     */
+    /**
      * Queries whether any threads are waiting to acquire. Note that
      * because cancellations due to interrupts and timeouts may occur
      * at any time, a {@code true} return does not guarantee that any
@@ -1467,6 +1496,9 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 同步器是否发生过争抢资源（如果存证，同步队列就会初始化，head != null ）
+     */
+    /**
      * Queries whether any threads have ever contended to acquire this
      * synchronizer; that is if an acquire method has ever blocked.
      *
@@ -1479,6 +1511,9 @@ public abstract class AbstractQueuedSynchronizer
         return head != null;
     }
 
+    /**
+     * 获取队列中第一个等待线程
+     */
     /**
      * Returns the first (longest-waiting) thread in the queue, or
      * {@code null} if no threads are currently queued.
@@ -1496,6 +1531,9 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 获取第一个等待线程
+     */
+    /**
      * Version of getFirstQueuedThread called when fastpath fails
      */
     private Thread fullGetFirstQueuedThread() {
@@ -1509,6 +1547,7 @@ public abstract class AbstractQueuedSynchronizer
          */
         Node h, s;
         Thread st;
+        // 同样的逻辑，执行两遍，防止队列别其他线程修改了
         if (((h = head) != null && (s = h.next) != null &&
              s.prev == head && (st = s.thread) != null) ||
             ((h = head) != null && (s = h.next) != null &&
@@ -1535,6 +1574,9 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 给定线程对象是否在等待队列中
+     */
+    /**
      * Returns true if the given thread is currently queued.
      *
      * <p>This implementation traverses the queue to determine
@@ -1553,6 +1595,9 @@ public abstract class AbstractQueuedSynchronizer
         return false;
     }
 
+    /**
+     * 判断第一个等待的节点是否为独占模式
+     */
     /**
      * Returns {@code true} if the apparent first queued thread, if one
      * exists, is waiting in exclusive mode.  If this method returns
@@ -1632,6 +1677,9 @@ public abstract class AbstractQueuedSynchronizer
     // Instrumentation and monitoring methods
 
     /**
+     * 等待队列长度
+     */
+    /**
      * Returns an estimate of the number of threads waiting to
      * acquire.  The value is only an estimate because the number of
      * threads may change dynamically while this method traverses
@@ -1650,6 +1698,9 @@ public abstract class AbstractQueuedSynchronizer
         return n;
     }
 
+    /**
+     * 等待的线程对象
+     */
     /**
      * Returns a collection containing threads that may be waiting to
      * acquire.  Because the actual set of threads may change
@@ -1672,6 +1723,9 @@ public abstract class AbstractQueuedSynchronizer
     }
 
     /**
+     * 等待的独占锁线程对象
+     */
+    /**
      * Returns a collection containing threads that may be waiting to
      * acquire in exclusive mode. This has the same properties
      * as {@link #getQueuedThreads} except that it only returns
@@ -1691,6 +1745,9 @@ public abstract class AbstractQueuedSynchronizer
         return list;
     }
 
+    /**
+     * 等待的共享线程对象
+     */
     /**
      * Returns a collection containing threads that may be waiting to
      * acquire in shared mode. This has the same properties
@@ -1928,6 +1985,9 @@ public abstract class AbstractQueuedSynchronizer
         return condition.getWaitingThreads();
     }
 
+    /**
+     * 条件接口的实现
+     */
     /**
      * Condition implementation for a {@link
      * AbstractQueuedSynchronizer} serving as the basis of a {@link
