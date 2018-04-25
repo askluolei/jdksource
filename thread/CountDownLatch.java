@@ -37,6 +37,12 @@ package java.util.concurrent;
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
 /**
+ * 计数锁存器 （百度翻译的名字!!）
+ * 使用很简单 构造方法需要一个参数 count
+ * 可以调用await 阻塞
+ * 直到有 count 次 countDown 调用后激活阻塞
+ */
+/**
  * A synchronization aid that allows one or more threads to wait until
  * a set of operations being performed in other threads completes.
  *
@@ -154,6 +160,11 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
  * @author Doug Lea
  */
 public class CountDownLatch {
+    
+    /**
+     * 内部静态类 Sync 实现 AQS 
+     * 实现都在这里面
+     */
     /**
      * Synchronization control For CountDownLatch.
      * Uses AQS state to represent count.
@@ -161,6 +172,9 @@ public class CountDownLatch {
     private static final class Sync extends AbstractQueuedSynchronizer {
         private static final long serialVersionUID = 4982264981922014374L;
 
+        /**
+         * 传进来的count 就是 state 的值
+         */
         Sync(int count) {
             setState(count);
         }
@@ -169,12 +183,24 @@ public class CountDownLatch {
             return getState();
         }
 
+        /**
+         * 下面的await 直接调用 AQS 的方法，AQS 的方法会调用这个方法来判断是否获取成功
+         */
         protected int tryAcquireShared(int acquires) {
+            /**
+             * 当 state 的值为0 的时候是成功的，也就是 await 不会阻塞，直接放行
+             */
             return (getState() == 0) ? 1 : -1;
         }
 
+        /**
+         * 下面的countDown 直接调用 AQS 的方法，AQS 的方法会调用这个方法来判断是否释放成功
+         */
         protected boolean tryReleaseShared(int releases) {
             // Decrement count; signal when transition to zero
+            // 这个是 countDown 方法调用后 AQS 回调子类的方法，判断是否要解除阻塞
+            // 下面的逻辑很简单 如果 state 为 0 返回false，不是是话，state - 1，返回 state 是否为 0
+            // 如果为0了，就代表 AQS 要做释放共享节点操作了（通知后续节点）
             for (;;) {
                 int c = getState();
                 if (c == 0)
@@ -200,6 +226,10 @@ public class CountDownLatch {
         this.sync = new Sync(count);
     }
 
+    /**
+     * 直接调用 AQS 的获取1个共享节点
+     * 响应中断
+     */
     /**
      * Causes the current thread to wait until the latch has counted down to
      * zero, unless the thread is {@linkplain Thread#interrupt interrupted}.
@@ -231,6 +261,10 @@ public class CountDownLatch {
         sync.acquireSharedInterruptibly(1);
     }
 
+    /**
+     * 直接调用 AQS 限时获取共享节点
+     * 响应中断
+     */
     /**
      * Causes the current thread to wait until the latch has counted down to
      * zero, unless the thread is {@linkplain Thread#interrupt interrupted},
@@ -277,6 +311,9 @@ public class CountDownLatch {
         return sync.tryAcquireSharedNanos(1, unit.toNanos(timeout));
     }
 
+    /**
+     * 直接调用 AQS 的是否共享节点（会调用子类的实现，进行判断后才决定是否真的释放）
+     */
     /**
      * Decrements the count of the latch, releasing all waiting threads if
      * the count reaches zero.

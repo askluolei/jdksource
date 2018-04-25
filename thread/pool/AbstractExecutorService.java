@@ -37,6 +37,9 @@ package java.util.concurrent;
 import java.util.*;
 
 /**
+ * 线程池的抽象实现
+ */
+/**
  * Provides default implementations of {@link ExecutorService}
  * execution methods. This class implements the {@code submit},
  * {@code invokeAny} and {@code invokeAll} methods using a

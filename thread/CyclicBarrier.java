@@ -38,6 +38,9 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
+ * 循环栅栏
+ */
+/**
  * A synchronization aid that allows a set of threads to all wait for
  * each other to reach a common barrier point.  CyclicBarriers are
  * useful in programs involving a fixed sized party of threads that
@@ -171,6 +174,9 @@ public class CyclicBarrier {
     private int count;
 
     /**
+     * 相当于重置
+     */
+    /**
      * Updates state on barrier trip and wakes up everyone.
      * Called only while holding lock.
      */
@@ -183,6 +189,10 @@ public class CyclicBarrier {
     }
 
     /**
+     * 设置本同步器中断状态，激活所有线程
+     * 本方法必须要再持有锁的情况下调用（因为调用了条件的 signalAll）
+     */
+    /**
      * Sets current barrier generation as broken and wakes up everyone.
      * Called only while holding lock.
      */
@@ -192,6 +202,13 @@ public class CyclicBarrier {
         trip.signalAll();
     }
 
+    /**
+     * 本质上很简单
+     * 使用重入锁和条件机制
+     * 线程在条件上等待，当等待的线程达到指定数量，就激活所有线程，然后进行下一轮
+     * 重点在于异常处理，当等待的线程中，有中断，或者使用限时等待，超时了，那么本同步器就处于一个中断（不可用状态）
+     * 需要调用 reset 来重置一下状态
+     */
     /**
      * Main barrier code, covering the various policies.
      */
@@ -207,6 +224,7 @@ public class CyclicBarrier {
                 throw new BrokenBarrierException();
 
             if (Thread.interrupted()) {
+                // 如果调用 await 的线程中断了 那中断这个同步器
                 breakBarrier();
                 throw new InterruptedException();
             }
@@ -216,29 +234,38 @@ public class CyclicBarrier {
                 boolean ranAction = false;
                 try {
                     final Runnable command = barrierCommand;
+                    // 注意这里直接调用 run，也就是说再最后一个调用 await 的线程中调用的
                     if (command != null)
                         command.run();
+                    // 如果不发生异常，就是true了，重置这个同步器
                     ranAction = true;
                     nextGeneration();
                     return 0;
                 } finally {
+                    // 如果上面 command 异常了，那中断这个同步器
                     if (!ranAction)
                         breakBarrier();
                 }
             }
 
+            // 如果到这里，那就代表还没到激活线程的时候，本线程也要等待，直到激活，同步器中断，线程中断，超时
             // loop until tripped, broken, interrupted, or timed out
             for (;;) {
                 try {
+                    // 没有超时条件，那就直接在条件上等待
                     if (!timed)
                         trip.await();
+                    // 否则 限时等待
                     else if (nanos > 0L)
                         nanos = trip.awaitNanos(nanos);
                 } catch (InterruptedException ie) {
+                    // 这里处理线程中断
                     if (g == generation && ! g.broken) {
+                        // 如果同步器没有中断，就中断同步器，抛中断异常
                         breakBarrier();
                         throw ie;
                     } else {
+                        // 如果同步器已经中断了，设置线程中断，后面抛同步器中断异常
                         // We're about to finish waiting even if we had not
                         // been interrupted, so this interrupt is deemed to
                         // "belong" to subsequent execution.
@@ -246,13 +273,17 @@ public class CyclicBarrier {
                     }
                 }
 
+                // 同步器中断
                 if (g.broken)
                     throw new BrokenBarrierException();
 
+                // 当调用了 nextGeneration 才为true，正常返回
                 if (g != generation)
                     return index;
 
+                // 如果有超时标记，并且超时了
                 if (timed && nanos <= 0L) {
+                    // 中断同步器，抛超时异常
                     breakBarrier();
                     throw new TimeoutException();
                 }
@@ -453,6 +484,10 @@ public class CyclicBarrier {
         }
     }
 
+    /**
+     * 重置，先处理之前的线程
+     * 处理完后换一个新的状态
+     */
     /**
      * Resets the barrier to its initial state.  If any parties are
      * currently waiting at the barrier, they will return with a
