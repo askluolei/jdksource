@@ -43,6 +43,7 @@ import java.util.concurrent.locks.LockSupport;
 
 /**
  * 据说是对读写锁的一个优化实现
+ * 暂时不看
  */
 /**
  * A capability-based lock with three modes for controlling read/write

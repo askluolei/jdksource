@@ -1112,6 +1112,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     }
 
     /**
+     * 处理工作线程停止
+     */
+    /**
      * Performs cleanup and bookkeeping for a dying worker. Called
      * only from worker threads. Unless completedAbruptly is set,
      * assumes that workerCount has already been adjusted to account
@@ -1125,29 +1128,37 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
      * @param completedAbruptly if the worker died due to user exception
      */
     private void processWorkerExit(Worker w, boolean completedAbruptly) {
+        // 当工作线程是突然停止的，工作线程数量 -1
         if (completedAbruptly) // If abrupt, then workerCount wasn't adjusted
             decrementWorkerCount();
 
         final ReentrantLock mainLock = this.mainLock;
         mainLock.lock();
         try {
+            // 记录这个工作线程完成的数量，然后移除工作线程
             completedTaskCount += w.completedTasks;
             workers.remove(w);
         } finally {
             mainLock.unlock();
         }
 
+        // 尝试终止线程池（如果是正常运行的情况下，没任何影响）
         tryTerminate();
 
         int c = ctl.get();
+        // 不是关闭状态
         if (runStateLessThan(c, STOP)) {
+            // 工作线程不是突然停止，如果是突然停止，可能是外部代码导致了，直接重新添加一个工作线程试一下
             if (!completedAbruptly) {
+                // 判断是否满足最小工作线程数量
                 int min = allowCoreThreadTimeOut ? 0 : corePoolSize;
                 if (min == 0 && ! workQueue.isEmpty())
                     min = 1;
+                // 没有达到最小工作线程，那就添加一个
                 if (workerCountOf(c) >= min)
                     return; // replacement not needed
             }
+            // 添加一个工作线程，非核心
             addWorker(null, false);
         }
     }
@@ -1191,6 +1202,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             // Are workers subject to culling?
             boolean timed = allowCoreThreadTimeOut || wc > corePoolSize;
 
+            // 如果工作线程需要超时处理，有工作线程，任务队列为空，就减少一个工作线程
             if ((wc > maximumPoolSize || (timed && timedOut))
                 && (wc > 1 || workQueue.isEmpty())) {
                 if (compareAndDecrementWorkerCount(c))
@@ -1199,6 +1211,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
             }
 
             try {
+                // 如果有超时机制，那就用 poll 限时等待从队列获取任务，否则 take 等待获取任务
                 Runnable r = timed ?
                     workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
                     workQueue.take();
@@ -1206,6 +1219,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     return r;
                 timedOut = true;
             } catch (InterruptedException retry) {
+                // 中断了，重试
                 timedOut = false;
             }
         }
@@ -1264,7 +1278,8 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         w.unlock(); // allow interrupts
         boolean completedAbruptly = true;
         try {
-            // task 不为null 或者 getTask() 不为null
+            // task 不为null 或者 getTask() 不为null, getTask 会阻塞获取任务队列的任务
+            // 正常工作的工作线程，会在这个 while循环里面玩
             while (task != null || (task = getTask()) != null) {
                 w.lock();
                 // If pool is stopping, ensure thread is interrupted;
@@ -1277,9 +1292,11 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     !wt.isInterrupted())
                     wt.interrupt();
                 try {
+                    // 空方法，子类可以实现
                     beforeExecute(wt, task);
                     Throwable thrown = null;
                     try {
+                        // 这里执行任务
                         task.run();
                     } catch (RuntimeException x) {
                         thrown = x; throw x;
@@ -1288,6 +1305,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     } catch (Throwable x) {
                         thrown = x; throw new Error(x);
                     } finally {
+                        // 空方法，子类可以实现
                         afterExecute(task, thrown);
                     }
                 } finally {
@@ -1296,8 +1314,10 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                     w.unlock();
                 }
             }
+            // 当没有经过while循环的时候 completedAbruptly 就为true了，代表在 下面的方法里面worker - 1
             completedAbruptly = false;
         } finally {
+            // 当 getTask 返回null，就代表要完毕工作线程了（在返回null之前，就已经设置工作线程数量 -1 了）
             processWorkerExit(w, completedAbruptly);
         }
     }
@@ -2152,6 +2172,10 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     /* Predefined RejectedExecutionHandlers */
 
     /**
+     * 直接执行策略
+     * 当线程池没有关闭的时候，直接在调用线程执行任务（调用 execute 的线程）
+     */
+    /**
      * A handler for rejected tasks that runs the rejected task
      * directly in the calling thread of the {@code execute} method,
      * unless the executor has been shut down, in which case the task
@@ -2178,6 +2202,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     }
 
     /**
+     * 直接抛拒绝异常
+     */
+    /**
      * A handler for rejected tasks that throws a
      * {@code RejectedExecutionException}.
      */
@@ -2202,6 +2229,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
     }
 
     /**
+     * 无视，啥都不干
+     */
+    /**
      * A handler for rejected tasks that silently discards the
      * rejected task.
      */
@@ -2221,6 +2251,9 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 
+    /**
+     * 丢弃最早的一个任务，然后执行 execute
+     */
     /**
      * A handler for rejected tasks that discards the oldest unhandled
      * request and then retries {@code execute}, unless the executor

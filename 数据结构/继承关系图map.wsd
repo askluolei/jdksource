@@ -1,0 +1,39 @@
+@startuml
+
+interface Map
+abstract AbstractMap
+class HashMap
+interface ConcurrentMap
+class LinkedHashMap
+class WeakHashMap
+class Hashtable
+interface SortedMap
+interface NavigableMap
+class TreeMap
+interface ConcurrentNavigableMap
+class ConcurrentSkipListMap
+class ConcurrentHashMap
+
+Map <|-- AbstractMap
+Map <|-- ConcurrentMap
+Map <|-- SortedMap
+Map <|-- Hashtable
+
+AbstractMap <|-- HashMap
+SortedMap <|-- NavigableMap
+
+NavigableMap <|-- TreeMap
+AbstractMap <|-- TreeMap
+
+ConcurrentMap <|-- ConcurrentNavigableMap
+
+AbstractMap <|-- ConcurrentSkipListMap
+ConcurrentNavigableMap <|-- ConcurrentSkipListMap
+
+AbstractMap <|-- WeakHashMap
+
+AbstractMap <|-- LinkedHashMap
+
+AbstractMap <|-- ConcurrentHashMap
+ConcurrentMap <|-- ConcurrentHashMap
+@enduml

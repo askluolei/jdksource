@@ -1,0 +1,93 @@
+@startuml
+
+interface Collection
+
+abstract AbstractCollection
+interface Set
+interface List
+interface Queue
+
+interface SortedSet
+abstract AbstractSet
+class HashSet
+class LinkedHashSet
+interface NavigableSet
+class ConcurrentSkipListSet
+class TreeSet
+
+abstract AbstractList
+class ArrayList
+abstract AbstractSequentialList
+class LinkedList
+class Vector
+
+interface BlockingQueue
+interface Deque
+abstract AbstractQueue
+class ConcurrentLinkedQueue
+interface BlockingDeque
+class ArrayDeque
+class ConcurrentLinkedDeque
+class LinkedBlockingDeque
+class ArrayBlockingQueue
+class SynchronousQueue
+class DelayQueue
+class LinkedBlockingQueue
+class PriorityBlockingQueue
+
+Collection <|-- Set
+Collection <|-- List
+Collection <|-- Queue
+Collection <|-- AbstractCollection
+
+Set <|-- SortedSet
+Set <|-- AbstractSet
+AbstractCollection <|-- AbstractSet
+
+SortedSet <|-- NavigableSet
+NavigableSet <|-- ConcurrentSkipListSet
+AbstractSet <|-- ConcurrentSkipListSet
+
+NavigableSet <|-- TreeSet
+AbstractSet <|-- TreeSet
+
+AbstractSet <|-- HashSet
+HashSet <|-- LinkedHashSet
+
+List <|-- AbstractList
+AbstractCollection <|-- AbstractList
+AbstractList <|-- AbstractSequentialList
+AbstractList <|-- ArrayList
+AbstractList <|-- Vector
+AbstractSequentialList <|-- LinkedList
+
+Queue <|-- AbstractQueue
+Queue <|-- Deque
+Queue <|-- BlockingQueue
+AbstractQueue <|-- ConcurrentLinkedQueue
+Deque <|-- BlockingDeque
+BlockingQueue <|-- BlockingDeque
+
+Deque <|-- LinkedList
+Deque <|-- ArrayDeque
+AbstractCollection <|-- ArrayDeque
+Deque <|-- ConcurrentLinkedDeque
+AbstractCollection <|-- ConcurrentLinkedDeque
+AbstractQueue <|-- LinkedBlockingDeque
+BlockingDeque <|-- LinkedBlockingDeque
+
+BlockingQueue <|-- ArrayBlockingQueue
+AbstractQueue <|-- ArrayBlockingQueue
+
+BlockingQueue <|-- SynchronousQueue
+AbstractQueue <|-- SynchronousQueue
+
+BlockingQueue <|-- DelayQueue
+AbstractQueue <|-- DelayQueue
+
+BlockingQueue <|-- LinkedBlockingQueue
+AbstractQueue <|-- LinkedBlockingQueue
+
+BlockingQueue <|-- PriorityBlockingQueue
+AbstractQueue <|-- PriorityBlockingQueue
+@enduml
