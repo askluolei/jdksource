@@ -1030,7 +1030,7 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
                 // 工作线程数量 + 1 如果成功，跳出两层循环
                 if (compareAndIncrementWorkerCount(c))
                     break retry;
-                // 否则 如果 线程池的状态改变的，跳到外层循环执行，否则，继续内层循环
+                // 否则 如果 线程池的状态改变了，或者添加工作线程数量失败，跳到外层循环执行，否则，继续内层循环
                 c = ctl.get();  // Re-read ctl
                 if (runStateOf(c) != rs)
                     continue retry;
