@@ -248,7 +248,7 @@ public class Semaphore implements java.io.Serializable {
         }
 
         /**
-         * 公平实现，直接调用 Sync 的 nonfairTryAcquireShared
+         * 非公平实现，直接调用 Sync 的 nonfairTryAcquireShared
          */
         protected int tryAcquireShared(int acquires) {
             return nonfairTryAcquireShared(acquires);
@@ -266,7 +266,7 @@ public class Semaphore implements java.io.Serializable {
         }
 
         /**
-         * 非公平实现获取
+         * 公平实现获取
          * 如果有节点排在前面，返回失败
          * 再看许可数量，尝试获取
          */
