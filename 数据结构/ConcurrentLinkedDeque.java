@@ -347,6 +347,9 @@ public class ConcurrentLinkedDeque<E>
     }
 
     /**
+     * 在头部添加一个节点
+     */
+    /**
      * Links e as first element.
      */
     private void linkFirst(E e) {
@@ -354,8 +357,13 @@ public class ConcurrentLinkedDeque<E>
         final Node<E> newNode = new Node<E>(e);
 
         restartFromHead:
+        /**
+         * 循环加 cas 保证操作成功
+         */
         for (;;)
+            // 这里又是一个循环
             for (Node<E> h = head, p = h, q;;) {
+                // 
                 if ((q = p.prev) != null &&
                     (q = (p = q).prev) != null)
                     // Check for head updates every other hop.

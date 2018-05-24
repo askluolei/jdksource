@@ -533,10 +533,14 @@ public class TreeMap<K,V>
      *         does not permit null keys
      */
     public V put(K key, V value) {
+        //用t表示二叉树的当前节点  
         Entry<K,V> t = root;
+        //t为null表示一个空树，即TreeMap中没有任何元素，直接插入  
         if (t == null) {
+            // 这里类型检查 Comparable 和 非 null 检查
             compare(key, key); // type (and possibly null) check
 
+            // 根节点
             root = new Entry<>(key, value, null);
             size = 1;
             modCount++;
@@ -545,6 +549,7 @@ public class TreeMap<K,V>
         int cmp;
         Entry<K,V> parent;
         // split comparator and comparable paths
+        // 看有没有自定义 Comparator，如果有就用自定义的，如果没有，就用 K 自身的 Comparable 接口
         Comparator<? super K> cpr = comparator;
         if (cpr != null) {
             do {
@@ -571,14 +576,19 @@ public class TreeMap<K,V>
                 else if (cmp > 0)
                     t = t.right;
                 else
+                    // 如果是 == 0 ，那就是key 一样，直接覆盖
                     return t.setValue(value);
             } while (t != null);
         }
+        // 上面就是找 parent
+        // 节点默认黑色
         Entry<K,V> e = new Entry<>(key, value, parent);
+        // 上面确保将要插入的方向（left 或者 right） 为null
         if (cmp < 0)
             parent.left = e;
         else
             parent.right = e;
+        // 重点在于维持 红黑树结构，再插入后需要调整
         fixAfterInsertion(e);
         size++;
         modCount++;
@@ -2249,28 +2259,45 @@ public class TreeMap<K,V>
         }
     }
 
+    // x 节点插入有，调整树结构
     /** From CLR */
     private void fixAfterInsertion(Entry<K,V> x) {
+        // 默认为红色节点，为啥，外面有讲解
         x.color = RED;
 
+        // x 不是 null，x 不是 root
+        // x 的父节点为红色，为啥是红色，外面讲解
         while (x != null && x != root && x.parent.color == RED) {
+            // x 的父节点 p ，是 祖父节点 g 的 左节点
             if (parentOf(x) == leftOf(parentOf(parentOf(x)))) {
+                // y 为 叔叔节点 g 的右节点
                 Entry<K,V> y = rightOf(parentOf(parentOf(x)));
-                if (colorOf(y) == RED) {
+                // 如果 y 是红色的， 叔叔是红色
+                if (colorOf(y) == RED) { // Case 1条件：叔叔是红色
+                    // 将“父节点”设为黑色。
                     setColor(parentOf(x), BLACK);
+                    // 将“叔叔节点”设为黑色。
                     setColor(y, BLACK);
+                    // 将“祖父节点”设为“红色”。
                     setColor(parentOf(parentOf(x)), RED);
+                    // 将“祖父节点”设为“当前节点”(红色节点)
                     x = parentOf(parentOf(x));
-                } else {
+                } else { // Case 2条件：叔叔是黑色，且当前节点是右孩子
                     if (x == rightOf(parentOf(x))) {
+                        // 将“父节点”作为“新的当前节点”。
                         x = parentOf(x);
+                        // 以“新的当前节点”为支点进行左旋。
                         rotateLeft(x);
                     }
+                    // 将“父节点”设为“黑色”。
                     setColor(parentOf(x), BLACK);
+                    // 将“祖父节点”设为“红色”。
                     setColor(parentOf(parentOf(x)), RED);
+                    // 以“祖父节点”为支点进行右旋。
                     rotateRight(parentOf(parentOf(x)));
                 }
             } else {
+                // 若“z的父节点”是“z的祖父节点的右孩子”，将上面的操作中“right”和“left”交换位置，然后依次执行。
                 Entry<K,V> y = leftOf(parentOf(parentOf(x)));
                 if (colorOf(y) == RED) {
                     setColor(parentOf(x), BLACK);

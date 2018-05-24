@@ -292,3 +292,78 @@ public E get(int index) {
 还有一个需要注意的地方是 iterator 方法， LinkedList 重写了 ListIterator 的实现，内部除了记录 index，还记录 节点，这个，就不用每次都用 index 来找上下节点了   
 所以，一个代码的细节就是，如果使用了 LinkedList， 就不要使用 `for(int i = 0; i < list.size; i++)` 这样的循环了，应该使用 foreach 循环 `for(item : list)` 或者使用 iterator  
 LinkedList 是非线程安全的   
+
+
+## CopyOnWriteArrayList 
+这个也不复杂，在写（删）的时候，加锁复制，赋值。    
+
+```java
+public boolean add(E e) {
+    final ReentrantLock lock = this.lock;
+    lock.lock();
+    try {
+        Object[] elements = getArray();
+        int len = elements.length;
+        Object[] newElements = Arrays.copyOf(elements, len + 1);
+        newElements[len] = e;
+        setArray(newElements);
+        return true;
+    } finally {
+        lock.unlock();
+    }
+}
+
+public void add(int index, E element) {
+    final ReentrantLock lock = this.lock;
+    lock.lock();
+    try {
+        Object[] elements = getArray();
+        int len = elements.length;
+        if (index > len || index < 0)
+            throw new IndexOutOfBoundsException("Index: "+index+
+                                                ", Size: "+len);
+        Object[] newElements;
+        int numMoved = len - index;
+        if (numMoved == 0)
+            newElements = Arrays.copyOf(elements, len + 1);
+        else {
+            newElements = new Object[len + 1];
+            System.arraycopy(elements, 0, newElements, 0, index);
+            System.arraycopy(elements, index, newElements, index + 1,
+                                numMoved);
+        }
+        newElements[index] = element;
+        setArray(newElements);
+    } finally {
+        lock.unlock();
+    }
+}
+
+public E remove(int index) {
+    final ReentrantLock lock = this.lock;
+    lock.lock();
+    try {
+        Object[] elements = getArray();
+        int len = elements.length;
+        E oldValue = get(elements, index);
+        int numMoved = len - index - 1;
+        if (numMoved == 0)
+            setArray(Arrays.copyOf(elements, len - 1));
+        else {
+            Object[] newElements = new Object[len - 1];
+            System.arraycopy(elements, 0, newElements, 0, index);
+            System.arraycopy(elements, index + 1, newElements, index,
+                                numMoved);
+            setArray(newElements);
+        }
+        return oldValue;
+    } finally {
+        lock.unlock();
+    }
+}
+``` 
+
+这些都没啥好说的，可以看到内存占用挺大的，适合读多写少的时候。  
+读的时候不需要加锁，写的时候，总是复制，然后赋值。当内容过多的时候，可能造成内存溢出
+读的时候，如果有其他线程在写，读可能读到旧值。  
+
