@@ -151,6 +151,9 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
     }
 
     /**
+     * 调用这个方法前，先上锁
+     */
+    /**
      * Inserts element at current put position, advances, and signals.
      * Call only when holding lock.
      */
@@ -158,10 +161,12 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         // assert lock.getHoldCount() == 1;
         // assert items[putIndex] == null;
         final Object[] items = this.items;
+        // putIndex 记录最后入队索引
         items[putIndex] = x;
         if (++putIndex == items.length)
             putIndex = 0;
         count++;
+        // 入队后，代表有数据了，通知 notEmpty 条件， 如果有在 notEmpty 上等待的，其实就是想要在非空的时候得到通知
         notEmpty.signal();
     }
 
@@ -173,6 +178,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         // assert lock.getHoldCount() == 1;
         // assert items[takeIndex] != null;
         final Object[] items = this.items;
+        // takeIndex 记录出队索引
         @SuppressWarnings("unchecked")
         E x = (E) items[takeIndex];
         items[takeIndex] = null;
@@ -181,6 +187,7 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         count--;
         if (itrs != null)
             itrs.elementDequeued();
+        // 出队了，肯定有空位，通知 notFull 条件，如果有在 notFull 上等待的，其实就是想要在非满的时候得到通知
         notFull.signal();
         return x;
     }
@@ -322,13 +329,17 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
      * @throws NullPointerException if the specified element is null
      */
     public boolean offer(E e) {
+        // 元素不能为null
         checkNotNull(e);
         final ReentrantLock lock = this.lock;
+        // 重入锁，所以阻塞队列是线程安全的
         lock.lock();
         try {
+            // 队列已满
             if (count == items.length)
                 return false;
             else {
+                // 没满，就入队，肯定成功，因为上锁了
                 enqueue(e);
                 return true;
             }
@@ -385,10 +396,15 @@ public class ArrayBlockingQueue<E> extends AbstractQueue<E>
         }
     }
 
+    /**
+        出队
+    */   
     public E poll() {
         final ReentrantLock lock = this.lock;
+        // 同样要上锁
         lock.lock();
         try {
+            // 为空就返回null，否则出队操作
             return (count == 0) ? null : dequeue();
         } finally {
             lock.unlock();

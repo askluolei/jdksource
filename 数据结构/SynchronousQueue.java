@@ -322,6 +322,12 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
         }
 
         /**
+         * 添加或者获取元素
+         * e 为null 的时候 take 
+         * timed = true 是要等待
+         * nanos 为等待时间 = 0 代表不等待
+         */
+        /**
          * Puts or takes an item.
          */
         @SuppressWarnings("unchecked")
@@ -348,14 +354,19 @@ public class SynchronousQueue<E> extends AbstractQueue<E>
              */
 
             SNode s = null; // constructed/reused as needed
+            // 看是 take  0 还是 put 1
             int mode = (e == null) ? REQUEST : DATA;
 
             for (;;) {
                 SNode h = head;
+                // 栈为空 或者相同的模式
                 if (h == null || h.mode == mode) {  // empty or same-mode
+                    // 不需要等待
                     if (timed && nanos <= 0) {      // can't wait
+                        // 如果头结点不为null，并且是取消状态，设置下一个节点为头结点
                         if (h != null && h.isCancelled())
                             casHead(h, h.next);     // pop cancelled node
+                        // 否则返回null，插入失败
                         else
                             return null;
                     } else if (casHead(h, s = snode(s, e, h, mode))) {

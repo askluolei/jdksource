@@ -363,7 +363,9 @@ public class ConcurrentLinkedDeque<E>
         for (;;)
             // 这里又是一个循环
             for (Node<E> h = head, p = h, q;;) {
-                // 
+                // 当 head 前面至少有两个节点的时候，重新获取一下h
+                // 注意，如果前面有一个元素的时候，p已经在head 的前一个节点了
+                // 第一个判断，通常只有在并发的情况下，可能为 true，单线程访问，head 可能不是指向头节点，而是后一个节点
                 if ((q = p.prev) != null &&
                     (q = (p = q).prev) != null)
                     // Check for head updates every other hop.
@@ -373,11 +375,14 @@ public class ConcurrentLinkedDeque<E>
                     continue restartFromHead;
                 else {
                     // p is first node
+                    // 新节点 next 指向p
                     newNode.lazySetNext(p); // CAS piggyback
+                    // p 的 prev 指向 新节点
                     if (p.casPrev(null, newNode)) {
                         // Successful CAS is the linearization point
                         // for e to become an element of this deque,
                         // and for newNode to become "live".
+                        // 当 p 节点 不为node 节点的时候，重新设置一下头结点
                         if (p != h) // hop two nodes at a time
                             casHead(h, newNode);  // Failure is OK.
                         return;
@@ -396,6 +401,8 @@ public class ConcurrentLinkedDeque<E>
 
         restartFromTail:
         for (;;)
+            // 跟上面差不多，当tail 后面至少有两个节点的时候，重新获取 tail
+            // 有一个tail 的时候，p 在tail 后一个节点
             for (Node<E> t = tail, p = t, q;;) {
                 if ((q = p.next) != null &&
                     (q = (p = q).next) != null)
@@ -406,11 +413,13 @@ public class ConcurrentLinkedDeque<E>
                     continue restartFromTail;
                 else {
                     // p is last node
+                    // 挂上新节点
                     newNode.lazySetPrev(p); // CAS piggyback
                     if (p.casNext(null, newNode)) {
                         // Successful CAS is the linearization point
                         // for e to become an element of this deque,
                         // and for newNode to become "live".
+                        // 当p不是tail 节点的时候 重新设置 tail
                         if (p != t) // hop two nodes at a time
                             casTail(t, newNode);  // Failure is OK.
                         return;
@@ -422,6 +431,9 @@ public class ConcurrentLinkedDeque<E>
 
     private static final int HOPS = 2;
 
+    /**
+     * 删除 x 节点
+     */
     /**
      * Unlinks non-null node x.
      */
@@ -745,6 +757,10 @@ public class ConcurrentLinkedDeque<E>
     }
 
     /**
+     * 第一个节点
+     * 因为 head 节点，可能落后了，所以需要计算第一个节点
+     */
+    /**
      * Returns the first node, the unique node p for which:
      *     p.prev == null && p.next != p
      * The returned node may or may not be logically deleted.
@@ -753,12 +769,15 @@ public class ConcurrentLinkedDeque<E>
     Node<E> first() {
         restartFromHead:
         for (;;)
+            // 就是判断head 节点是否是第一个，如果不是，那就重新设置一下然后返回
             for (Node<E> h = head, p = h, q;;) {
+                // 如果头结点前面至少有两个节点，重新读取
                 if ((q = p.prev) != null &&
                     (q = (p = q).prev) != null)
                     // Check for head updates every other hop.
                     // If p == q, we are sure to follow head instead.
                     p = (h != (h = head)) ? h : q;
+                // 看p 是不是头结点，如果不是，可能是头结点的前一个，那么设置p为头结点返回
                 else if (p == h
                          // It is possible that p is PREV_TERMINATOR,
                          // but if so, the CAS is guaranteed to fail.
@@ -769,6 +788,9 @@ public class ConcurrentLinkedDeque<E>
             }
     }
 
+    /**
+     * 同上
+     */
     /**
      * Returns the last node, the unique node p for which:
      *     p.next == null && p.prev != p
@@ -937,6 +959,12 @@ public class ConcurrentLinkedDeque<E>
         return true;
     }
 
+    /**
+     * 获取第一个节点
+     * 循环，如果 item 为 null，是无效节点，
+     * first 是找到头结点，
+     * 如果是无效节点，继续找 p 的有效后继节点
+     */
     public E peekFirst() {
         for (Node<E> p = first(); p != null; p = succ(p)) {
             E item = p.item;
@@ -946,6 +974,9 @@ public class ConcurrentLinkedDeque<E>
         return null;
     }
 
+    /**
+     * 同上
+     */
     public E peekLast() {
         for (Node<E> p = last(); p != null; p = pred(p)) {
             E item = p.item;

@@ -122,5 +122,93 @@ public void addLast(E e) {
 }
 ```     
 
+### ArrayBlockingQueue  
+基于数组的阻塞队列，内部使用重入锁和两个条件实现阻塞
+实现并不复杂，看一下代表性的方法 offer poll
+
+```java
+
+public boolean offer(E e) {
+    // 元素不能为null
+    checkNotNull(e);
+    final ReentrantLock lock = this.lock;
+    // 重入锁，所以阻塞队列是线程安全的
+    lock.lock();
+    try {
+        // 队列已满
+        if (count == items.length)
+            return false;
+        else {
+            // 没满，就入队，肯定成功，因为上锁了
+            enqueue(e);
+            return true;
+        }
+    } finally {
+        lock.unlock();
+    }
+}
+
+/**
+ * 调用这个方法前，先上锁
+ */
+private void enqueue(E x) {
+    // assert lock.getHoldCount() == 1;
+    // assert items[putIndex] == null;
+    final Object[] items = this.items;
+    // putIndex 记录最后入队索引
+    items[putIndex] = x;
+    if (++putIndex == items.length)
+        putIndex = 0;
+    count++;
+    // 入队后，代表有数据了，通知 notEmpty 条件， 如果有在 notEmpty 上等待的，其实就是想要在非空的时候得到通知
+    notEmpty.signal();
+}
+```     
+
+太简单了，没啥说的。    
+
+```java
+/**
+    出队
+*/   
+public E poll() {
+    final ReentrantLock lock = this.lock;
+    // 同样要上锁
+    lock.lock();
+    try {
+        // 为空就返回null，否则出队操作
+        return (count == 0) ? null : dequeue();
+    } finally {
+        lock.unlock();
+    }
+}
+
+private E dequeue() {
+    // assert lock.getHoldCount() == 1;
+    // assert items[takeIndex] != null;
+    final Object[] items = this.items;
+    // takeIndex 记录出队索引
+    @SuppressWarnings("unchecked")
+    E x = (E) items[takeIndex];
+    items[takeIndex] = null;
+    if (++takeIndex == items.length)
+        takeIndex = 0;
+    count--;
+    if (itrs != null)
+        itrs.elementDequeued();
+    // 出队了，肯定有空位，通知 notFull 条件，如果有在 notFull 上等待的，其实就是想要在非满的时候得到通知
+    notFull.signal();
+    return x;
+}
+``` 
+
+基于数组，重入锁，两个条件，putIndex 和 takeIndex。
+
+### LinkedBlockingDeque 
+看名字就知道基于双向链表的阻塞队列
+内部实现跟 LinkedList 差不多，就是多了重入锁，两个条件。。 
+
+
 ### ConcurrentLinkedDeque   
 这个看名字，就能猜到线程安全的，基于链表实现的双端队列  
+里面使用循环加上 cas 操作，无锁化编程   
