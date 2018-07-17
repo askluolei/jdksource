@@ -1,0 +1,34 @@
+@startuml BeanPostFactory
+
+interface BeanPostProcessor {
+    + postProcessBeforeInitialization
+    + postProcessAfterInitialization
+}
+
+interface MergedBeanDefinitionPostProcessor {
+    + postProcessMergedBeanDefinition
+}
+
+interface InstantiationAwareBeanPostProcessor {
+    + postProcessBeforeInstantiation
+    + postProcessAfterInstantiation
+    + postProcessPropertyValues
+}
+
+interface DestructionAwareBeanPostProcessor {
+    + postProcessBeforeDestruction
+    + requiresDestruction
+}
+
+interface SmartInstantiationAwareBeanPostProcessor {
+    + predictBeanType
+    + determineCandidateConstructors
+    + getEarlyBeanReference
+}
+
+BeanPostProcessor <-- MergedBeanDefinitionPostProcessor
+BeanPostProcessor <-- InstantiationAwareBeanPostProcessor
+BeanPostProcessor <-- DestructionAwareBeanPostProcessor
+
+InstantiationAwareBeanPostProcessor <-- SmartInstantiationAwareBeanPostProcessor
+@enduml

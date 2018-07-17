@@ -1,0 +1,129 @@
+@startuml spring-ioc AnnotationConfigApplicationContext 启动分析
+
+AnnotationConfigApplicationContext -> AnnotationConfigApplicationContext: new
+
+AnnotationConfigApplicationContext -> AnnotatedBeanDefinitionReader: new
+
+AnnotatedBeanDefinitionReader -> AnnotatedBeanDefinitionReader: registerAnnotationConfigProcessors
+note left
+这里添加一下 BeanPostProcessor 的扩展
+调用的是 AnnotationConfigUtils.registerAnnotationConfigProcessors   
+其中重点的内容是
+1. ConfigurationClassPostProcessor
+2. AutowiredAnnotationBeanPostProcessor
+3. RequiredAnnotationBeanPostProcessor
+end note
+
+AnnotatedBeanDefinitionReader -> AnnotationConfigApplicationContext: return
+
+AnnotationConfigApplicationContext -> ClassPathBeanDefinitionScanner: new
+
+ClassPathBeanDefinitionScanner -> AnnotationConfigApplicationContext: return
+
+AnnotationConfigApplicationContext -> AnnotatedBeanDefinitionReader: register
+note left
+这里 register 注册的第一个 BeanDefinition，作为参数
+也就是标记了 @Configuration 注解启动配置类
+end note
+
+AnnotatedBeanDefinitionReader -> AnnotationConfigApplicationContext: registerBeanDefinition
+
+AnnotationConfigApplicationContext -> AbstractApplicationContext: refresh
+note left
+refresh 是 spring ioc 容器的启动方法，老复杂了
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: prepareRefresh
+note left: 准备启动阶段，记录启动时间，准备 properties 和 验证
+
+AbstractApplicationContext -> AbstractApplicationContext: obtainFreshBeanFactory
+note left
+ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+获取 beanFactory  通常是 DefaultListableBeanFactory 实例，在 注解配置 和 xml 配置中的实现稍微有些不同
+不同总的来说就是获取一个 DefaultListableBeanFactory
+注解里面还是直接返回，xml里面销毁里面的 bean，重新构建的
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: prepareBeanFactory
+note left
+prepareBeanFactory(beanFactory);
+准备阶段，就是对 beanFactory 进行一些配置
+1. 设置类加载器
+2. 设置beanFactory的表达式语言处理器
+3. 为beanFactory增加了一个默认的propertyEditor
+4. 添加一个 ApplicationContextAwareProcessor 这是一个 BeaPostProcessor 实现用来实现一些 Aware 接口
+5. 添加忽略依赖的接口，就是 ApplicationContextAwareProcessor 里面处理的接口
+6. 这里添加处理依赖时候的映射 也就是如果应用依赖了譬如 BeanFactory，ApplicationContext 等接口，都是同一个实例（本实例） 
+
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: postProcessBeanFactory
+note left: 准备完毕后的一个方法，子类可以对 beanFactory 继续做一些修改，本类中是一个空方法
+
+AbstractApplicationContext -> AbstractApplicationContext: invokeBeanFactoryPostProcessors
+note left
+这是一个重要的地方，对应扩展接口为 BeanFactoryPostProcessor 以及子接口 BeanDefinitionRegistryPostProcessor
+BeanFactoryPostProcessor 接口是可以针对 beanFactory 做一些修改，譬如添加一些 bean，设置 beanFactory 属性
+BeanDefinitionRegistryPostProcessor 接口只是方法参数为 BeanDefinitionRegistry，可以再添加一些 BeanDefinition
+这个接口是一个重要的扩展接口，spring 内部 或者外部都可以通过这个接口的实现来扩展
+可以通过 ApplicationContext 的 addBeanFactoryPostProcessor 方法添加，或者注册 Bean，spring 就可以感知到，进行触发
+发生顺序很重要，先调用通过 applicationContext.add 添加的，然后调用 BeanDefinition 容器里面的
+spring 内部的第一个调用的容器中的定义就是 ConfigurationClassPostProcessor，这个用了根据 配置类来找各个地方的 BeanDefinition ，注册到 容器中
+无论xml配置还是注解配置，通常有一个入口配置（springboot 中通常就是 Application），然后根据这个配置类，找到其他的配置类，根据所有配置类（找到一个解析一个）找到定义的 bean
+end note
+
+
+AbstractApplicationContext -> AbstractApplicationContext: registerBeanPostProcessors
+note left
+经过上一步调用后，所有的 BeanDefinition 都已经找到并且注册到容器中类
+这一步就是找到容器中实现 BeanPostProcessor 的 BeanDefinition，然后添加到 beanFactory 中
+BeanPostProcessor 这个也是一个非常重要的扩展接口，譬如spring内部各种 Aware 接口，就是有 这个接口的实现类扩展出来的
+aop 也是这一系列子接口实现的扩展
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: initMessageSource
+note left
+初始化 MessageSource 接口，如果没有，就使用默认的，注册到容器里面
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: initApplicationEventMulticaster
+note left
+初始化 ApplicationEventMulticaster 接口，如果没有，就使用默认的，注册到容器里面
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: onRefresh
+note left
+这是一个空方法，子类可以实现，可以在 bean 容器里面添加一些东西
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: registerListeners
+note left
+这里是注册 ApplicationListener ，一些是通过 beanFactory 注册的，一些是用户自定义的 Bean ，然后发布 early 事件
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: finishBeanFactoryInitialization
+note left
+这个方法里面将实例化所有非延时加载的单例 bean
+实例化就是调用 getBean 方法
+这里将触发 BeanPostProcessor
+end note
+
+AbstractApplicationContext -> AbstractApplicationContext: finishRefresh
+note left
+清空 resource缓存，注册生命周期处理bean，然后获取所有 周期接口的实现启动，发布启动事件，注册到 JMX
+end note
+
+alt if exception
+
+AbstractApplicationContext -> AbstractApplicationContext: destroyBeans
+note left: 如果启动出现异常，就销毁所有已经创建的实例
+
+AbstractApplicationContext -> AbstractApplicationContext: cancelRefresh
+note left: 取消refresh
+end
+
+AbstractApplicationContext -> AbstractApplicationContext: resetCommonCaches
+note left: 最后一步，清空所有缓存
+
+AbstractApplicationContext -> AnnotationConfigApplicationContext: end
+@enduml
