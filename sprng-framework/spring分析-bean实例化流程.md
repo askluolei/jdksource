@@ -534,3 +534,158 @@ protected Object doCreateBean(final String beanName, final RootBeanDefinition mb
 里面有两个老复杂的方法，后面先不看了
 1. createBeanInstance 这个方法，如果是构造方法创建，那么会有构造注入
 2. populateBean 这个方法处理依赖注入
+
+```java
+protected BeanWrapper createBeanInstance(String beanName, RootBeanDefinition mbd, @Nullable Object[] args) {
+    // Make sure bean class is actually resolved at this point.
+    // 确保 class 已经解析了
+    Class<?> beanClass = resolveBeanClass(mbd, beanName);
+
+    if (beanClass != null && !Modifier.isPublic(beanClass.getModifiers()) && !mbd.isNonPublicAccessAllowed()) {
+        throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                "Bean class isn't public, and non-public access not allowed: " + beanClass.getName());
+    }
+
+    // 对象提供接口
+    Supplier<?> instanceSupplier = mbd.getInstanceSupplier();
+    if (instanceSupplier != null) {
+        return obtainFromSupplier(instanceSupplier, beanName);
+    }
+
+    // factory method 方法获取对象
+    if (mbd.getFactoryMethodName() != null)  {
+        return instantiateUsingFactoryMethod(beanName, mbd, args);
+    }
+
+    // 构造方法
+    // Shortcut when re-creating the same bean...
+    // 判断一下是否处理过了，就是解析出来要用的 构造方法和参数没
+    boolean resolved = false;
+    boolean autowireNecessary = false;
+    if (args == null) {
+        synchronized (mbd.constructorArgumentLock) {
+            if (mbd.resolvedConstructorOrFactoryMethod != null) {
+                resolved = true;
+                autowireNecessary = mbd.constructorArgumentsResolved;
+            }
+        }
+    }
+    // 后面就是用解析出来的使用的构造方法 或者默认构造方法构建实例了
+    // 解析出来的构造方法，需要注入
+    if (resolved) {
+        if (autowireNecessary) {
+            return autowireConstructor(beanName, mbd, null, null);
+        }
+        else {
+            return instantiateBean(beanName, mbd);
+        }
+    }
+
+    // Need to determine the constructor...
+    // 解析要用的构造方法
+    // 解析是用 BeanPostProcessor 接口的子接口 SmartInstantiationAwareBeanPostProcessor 的来扩展的
+    // 注入相关的是 AutowiredAnnotationBeanPostProcessor 处理
+    Constructor<?>[] ctors = determineConstructorsFromBeanPostProcessors(beanClass, beanName);
+    if (ctors != null ||
+            mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_CONSTRUCTOR ||
+            mbd.hasConstructorArgumentValues() || !ObjectUtils.isEmpty(args))  {
+        // 构造方法依赖注入
+        return autowireConstructor(beanName, mbd, ctors, args);
+    }
+
+    // 不需要特殊处理，使用默认的构造方法
+    // No special handling: simply use no-arg constructor.
+    return instantiateBean(beanName, mbd);
+}
+
+// 里面老复杂，流程就是找构造方法，选择使用的构造方法，根据构造方法的参数，选择注入，看是 value 还是 需要注入 bean，如果需要注入bean 那就getBean 初始化
+protected BeanWrapper autowireConstructor(
+        String beanName, RootBeanDefinition mbd, @Nullable Constructor<?>[] ctors, @Nullable Object[] explicitArgs) {
+
+    return new ConstructorResolver(this).autowireConstructor(beanName, mbd, ctors, explicitArgs);
+}
+
+// 这里是根据 name 和 type 注入的地方，就不细看了
+protected void populateBean(String beanName, RootBeanDefinition mbd, @Nullable BeanWrapper bw) {
+    if (bw == null) {
+        if (mbd.hasPropertyValues()) {
+            throw new BeanCreationException(
+                    mbd.getResourceDescription(), beanName, "Cannot apply property values to null instance");
+        }
+        else {
+            // Skip property population phase for null instance.
+            return;
+        }
+    }
+
+    // Give any InstantiationAwareBeanPostProcessors the opportunity to modify the
+    // state of the bean before properties are set. This can be used, for example,
+    // to support styles of field injection.
+    boolean continueWithPropertyPopulation = true;
+
+    if (!mbd.isSynthetic() && hasInstantiationAwareBeanPostProcessors()) {
+        for (BeanPostProcessor bp : getBeanPostProcessors()) {
+            if (bp instanceof InstantiationAwareBeanPostProcessor) {
+                InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                if (!ibp.postProcessAfterInstantiation(bw.getWrappedInstance(), beanName)) {
+                    continueWithPropertyPopulation = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!continueWithPropertyPopulation) {
+        return;
+    }
+
+    PropertyValues pvs = (mbd.hasPropertyValues() ? mbd.getPropertyValues() : null);
+
+    if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_NAME ||
+            mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_TYPE) {
+        MutablePropertyValues newPvs = new MutablePropertyValues(pvs);
+
+        // Add property values based on autowire by name if applicable.
+        if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_NAME) {
+            // 根据 beanName 注入
+            autowireByName(beanName, mbd, bw, newPvs);
+        }
+
+        // Add property values based on autowire by type if applicable.
+        if (mbd.getResolvedAutowireMode() == RootBeanDefinition.AUTOWIRE_BY_TYPE) {
+            // 类型注入
+            autowireByType(beanName, mbd, bw, newPvs);
+        }
+
+        pvs = newPvs;
+    }
+
+    boolean hasInstAwareBpps = hasInstantiationAwareBeanPostProcessors();
+    boolean needsDepCheck = (mbd.getDependencyCheck() != RootBeanDefinition.DEPENDENCY_CHECK_NONE);
+
+    if (hasInstAwareBpps || needsDepCheck) {
+        if (pvs == null) {
+            pvs = mbd.getPropertyValues();
+        }
+        PropertyDescriptor[] filteredPds = filterPropertyDescriptorsForDependencyCheck(bw, mbd.allowCaching);
+        if (hasInstAwareBpps) {
+            for (BeanPostProcessor bp : getBeanPostProcessors()) {
+                if (bp instanceof InstantiationAwareBeanPostProcessor) {
+                    InstantiationAwareBeanPostProcessor ibp = (InstantiationAwareBeanPostProcessor) bp;
+                    pvs = ibp.postProcessPropertyValues(pvs, filteredPds, bw.getWrappedInstance(), beanName);
+                    if (pvs == null) {
+                        return;
+                    }
+                }
+            }
+        }
+        if (needsDepCheck) {
+            checkDependencies(beanName, mbd, filteredPds, pvs);
+        }
+    }
+
+    if (pvs != null) {
+        applyPropertyValues(beanName, mbd, bw, pvs);
+    }
+}
+``` 
