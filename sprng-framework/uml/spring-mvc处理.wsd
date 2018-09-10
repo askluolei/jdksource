@@ -1,0 +1,139 @@
+@startuml spring-mvc 处理流程分析
+
+FrameworkServlet -> FrameworkServlet: processRequest
+note left
+请求入口
+doGet,doPost,doPut 等方法都是进入这里
+end note
+
+FrameworkServlet -> FrameworkServlet: initContextHolders
+note left
+设置线程上下文
+这个很常用，在本次请求线程的任意地方
+可以通过上下文获取 request 和 response
+end note
+
+FrameworkServlet -> DispatcherServlet: doService
+note left
+调用子类的 doService 方法
+end note
+
+DispatcherServlet -> DispatcherServlet: doDispatch
+note left
+调用前还有设置一堆 request attribute
+end note
+
+DispatcherServlet -> DispatcherServlet: checkMultipart
+note left
+检查是否为文件上传请求
+如果是就把 request 换成 MultipartHttpServletRequest
+end note
+
+DispatcherServlet -> DispatcherServlet: getHandler
+note left
+获取处理类，返回的是 HandlerExecutionChain 
+其实是遍历 HandlerMapping 来看哪个能处理
+主要有 
+RequestMappingHandlerMapping
+BeanNameUrlHandlerMapping
+SimpleUrlHandlerMapping
+WelcomePageHandlerMapping
+
+其中 RequestMappingHandlerMapping 是大部分业务逻辑使用的
+返回的 chain 里面的 handler 是 HandlerMethod 
+chain 里面包含具体的 handler 和拦截器
+end note
+
+DispatcherServlet -> DispatcherServlet: getHandlerAdapter
+note left
+获取适配 调用 handler 的方法之前和之后做一些增强处理
+每个 adapter 类型，支持对应的 handler 类型
+这里的增强不是指拦截器，是参数和响应处理，也有几种 adapter
+1. HttpRequestHandlerAdapter 这个处理 handler 的类型为 HttpRequestHandler 
+2. SimpleServletHandlerAdapter 这个处理 handler 的类型为 Servlet 调用 service 方法
+3. SimpleControllerHandlerAdapter 这个处理 handler 的类型为 Controller 
+4. RequestMappingHandlerAdapter 这个是大部分逻辑走的地方，上面3个一般是 spring 自己用的，这个处理的 handler 类型是 HandlerMethod 
+end note
+
+DispatcherServlet -> DispatcherServlet: applyPreHandle
+note left
+调用拦截器的方法 preHandle
+end note
+
+DispatcherServlet -> AbstractHandlerMethodAdapter: handle
+note left
+调用代理的 handle 方法，我们以 RequestMappingHandlerAdapter 为例
+里面会涉及到 参数的处理和响应结果的处理
+end note
+
+AbstractHandlerMethodAdapter -> RequestMappingHandlerAdapter: handleInternal
+
+RequestMappingHandlerAdapter -> RequestMappingHandlerAdapter: invokeHandlerMethod
+
+RequestMappingHandlerAdapter -> RequestMappingHandlerAdapter: createInvocableHandlerMethod
+note left
+获取执行对象 ServletInvocableHandlerMethod
+end note
+
+RequestMappingHandlerAdapter -> ServletInvocableHandlerMethod: invokeAndHandle
+
+ServletInvocableHandlerMethod -> InvocableHandlerMethod: invokeForRequest
+
+InvocableHandlerMethod -> InvocableHandlerMethod: getMethodArgumentValues
+note left
+获取执行方法需要的参数
+使用的是 HandlerMethodArgumentResolverComposite 处理的
+这里包含 HandlerMethodArgumentResolver 列表，包括系统的和自定义的参数处理
+譬如 @RequestBody 等注解，还有 HttpServletRequest 对象，都是在这里处理的
+end note
+
+InvocableHandlerMethod -> InvocableHandlerMethod: doInvoke
+
+InvocableHandlerMethod -> ServletInvocableHandlerMethod: setResponseStatus
+note left
+设置 http 状态和原因
+注解 @ResponseStatus 的处理
+end note
+
+ServletInvocableHandlerMethod -> HandlerMethodReturnValueHandlerComposite: handleReturnValue
+note left
+这个对象里面包含 HandlerMethodReturnValueHandler 列表
+用来处理返回值的，比如 @ResponseBody
+end note
+
+InvocableHandlerMethod -> RequestMappingHandlerAdapter: return
+
+RequestMappingHandlerAdapter -> RequestMappingHandlerAdapter: getModelAndView
+note left
+如果不是视图，那这里返回的就是 null 了，在响应处理那里实际就已经处理了
+end note
+
+RequestMappingHandlerAdapter -> DispatcherServlet: return
+
+DispatcherServlet -> DispatcherServlet: applyDefaultViewName
+note left
+不返回视图，这里啥都不做
+end note
+
+DispatcherServlet -> DispatcherServlet: applyPostHandle
+note left
+调用拦截器 postHandle 方法
+end note
+
+DispatcherServlet -> DispatcherServlet: processDispatchResult
+note left
+如果不返回视图，跳过视图处理逻辑
+这里触发拦截器的 afterCompletion 方法
+end note
+
+DispatcherServlet -> FrameworkServlet: return
+
+FrameworkServlet -> FrameworkServlet: resetContextHolders
+
+FrameworkServlet -> FrameworkServlet: publishRequestHandledEvent
+note left
+方法处理完成，会触发一个 ServletRequestHandledEvent 事件
+通过事件监听 implements ApplicationListener<ServletRequestHandledEvent> 
+可以消费这个事件
+end note
+@enduml
