@@ -8,43 +8,45 @@ AOP 的注解核心配置类是 `AnnotationAwareAspectJAutoProxyCreator`
 
 一直向上，找继承链到 `AbstractAutoProxyCreator`, 这个类实现 `SmartInstantiationAwareBeanPostProcessor` 接口 
 而 `SmartInstantiationAwareBeanPostProcessor` 接口是 `BeanPostProcessor` 的子接口，作用是在 bean 实例化过程中做些扩展具体的在实例化里面可以看   
-重点方法是 `postProcessBeforeInstantiation` 
+重点方法是 `postProcessAfterInitialization` 
 ```java
-@Override
-public Object postProcessBeforeInstantiation(Class<?> beanClass, String beanName) throws BeansException {
-    Object cacheKey = getCacheKey(beanClass, beanName);
+public Object postProcessAfterInitialization(@Nullable Object bean, String beanName) throws BeansException {
+	if (bean != null) {
+		Object cacheKey = getCacheKey(bean.getClass(), beanName);
+		if (!this.earlyProxyReferences.contains(cacheKey)) {
+			return wrapIfNecessary(bean, beanName, cacheKey);
+		}
+	}
+	return bean;
+}
 
-    if (!StringUtils.hasLength(beanName) || !this.targetSourcedBeans.contains(beanName)) {
-        if (this.advisedBeans.containsKey(cacheKey)) {
-            return null;
-        }
-        if (isInfrastructureClass(beanClass) || shouldSkip(beanClass, beanName)) {
-            this.advisedBeans.put(cacheKey, Boolean.FALSE);
-            return null;
-        }
+protected Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+    if (StringUtils.hasLength(beanName) && this.targetSourcedBeans.contains(beanName)) {
+        return bean;
+    }
+    if (Boolean.FALSE.equals(this.advisedBeans.get(cacheKey))) {
+        return bean;
+    }
+    if (isInfrastructureClass(bean.getClass()) || shouldSkip(bean.getClass(), beanName)) {
+        this.advisedBeans.put(cacheKey, Boolean.FALSE);
+        return bean;
     }
 
-    // Create proxy here if we have a custom TargetSource.
-    // Suppresses unnecessary default instantiation of the target bean:
-    // The TargetSource will handle target instances in a custom fashion.
-    TargetSource targetSource = getCustomTargetSource(beanClass, beanName);
-    if (targetSource != null) {
-        if (StringUtils.hasLength(beanName)) {
-            this.targetSourcedBeans.add(beanName);
-        }
-        // 这里的都是 Advisor 对象，也就是通知器
-        Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(beanClass, beanName, targetSource);
-        // 创建代理
-        Object proxy = createProxy(beanClass, beanName, specificInterceptors, targetSource);
+    // Create proxy if we have advice.
+    Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(bean.getClass(), beanName, null);
+    if (specificInterceptors != DO_NOT_PROXY) {
+        this.advisedBeans.put(cacheKey, Boolean.TRUE);
+        Object proxy = createProxy(
+                bean.getClass(), beanName, specificInterceptors, new SingletonTargetSource(bean));
         this.proxyTypes.put(cacheKey, proxy.getClass());
         return proxy;
     }
 
-    return null;
+    this.advisedBeans.put(cacheKey, Boolean.FALSE);
+    return bean;
 }
 ``` 
 
-直接看 `if (targetSource != null)` 里面，通常 targetSource 都null，创建代理的逻辑在里面 
 第一步就是找到拦截器，也就是通知器，然后就是创建代理    
 
 ### 获取拦截 Advisor
