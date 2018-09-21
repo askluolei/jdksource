@@ -1,0 +1,227 @@
+@startuml
+
+interface Principal {
+    + getName(): String
+}
+note bottom: 这里通常是用户名
+
+interface GrantedAuthority {
+    + getAuthority(): String
+}
+note bottom: 字符串形式的权限表达式，不过在 spring-security 里面是角色
+
+interface Authentication {
+    + getAuthorities(): Collection<? extends GrantedAuthority>
+    + getCredentials(): Object
+    + getDetails(): Object
+    + getPrincipal(): Object
+    + isAuthenticated(): boolean
+    + setAuthenticated(boolean isAuthenticated)
+}
+note bottom: 这个类，可以代表用户传过来的凭证（用户名密码之类的），也是认证处理过后的内部使用的凭证
+
+Principal <|-- Authentication
+GrantedAuthority *-- Authentication
+
+interface AuthenticationManager {
+    + authenticate(Authentication authentication): Authentication
+}
+note bottom: 认证管理，就是判断传过来的凭证是否有效，通常不会自己实现
+
+Authentication *-- AuthenticationManager
+
+
+interface AuthenticationProvider {
+    + authenticate(Authentication authentication): Authentication
+    + supports(Class<?> authentication): boolean
+}
+note bottom: 认证提供类，由于凭证可以是各种类型，每个提供者处理自己支持的凭证类型
+
+class ProviderManager {
+    - providers: List<AuthenticationProvider>
+    - parent: AuthenticationManager
+}
+note bottom: 这个就是认证管理的内部实现，我们自定义的是 认证提供，用来处理自定义凭证，如果没有自定义，那也不用管这里
+
+AuthenticationProvider *-- ProviderManager
+
+AuthenticationManager <|-- ProviderManager
+
+interface CredentialsContainer {
+    + eraseCredentials()
+}
+
+abstract class AbstractAuthenticationToken {
+    - authorities: Collection<GrantedAuthority>
+    - details: Object
+    - authenticated: boolean
+}
+note bottom: 这个是抽象的凭证类实现，凭证里面有权限（角色），明细（额外信息），是否认证通过
+
+Authentication <|-- AbstractAuthenticationToken
+CredentialsContainer <|-- AbstractAuthenticationToken
+
+class RememberMeAuthenticationToken {
+    - keyHash: int
+    - principal: Object
+}
+note bottom: 跟 RememberMeAuthenticationProvider 是配套的，判断 keyHash 是否相同
+
+class RememberMeAuthenticationProvider {
+    - keyHash: int
+    - principal: Object
+}
+
+RememberMeAuthenticationToken *-- RememberMeAuthenticationProvider
+AuthenticationProvider <|-- RememberMeAuthenticationProvider
+
+
+class AnonymousAuthenticationToken {
+    - keyHash: int
+    - principal: Object
+}
+
+note bottom: 跟 AnonymousAuthenticationProvider 配套，判断 key 是否相同，代表匿名
+
+class AnonymousAuthenticationProvider {
+    - key: String
+}
+
+AnonymousAuthenticationToken *-- AnonymousAuthenticationProvider
+AuthenticationProvider <|-- AnonymousAuthenticationProvider
+
+
+class RunAsUserToken {
+    - keyHash: int
+    - principal: Object
+    - credentials: Object
+    - originalAuthentication: Class<? extends Authentication>
+}
+
+note bottom: 跟 RunAsImplAuthenticationProvider 配套，只要key 一样，外面传的角色就是有效的
+
+GrantedAuthority <|-- RunAsUserToken
+
+class RunAsImplAuthenticationProvider {
+    - key: String
+}
+
+RunAsUserToken *-- RunAsImplAuthenticationProvider
+AuthenticationProvider <|-- RunAsImplAuthenticationProvider
+
+class PreAuthenticatedAuthenticationToken {
+    - principal: Object
+    - credentials: Object
+}
+
+interface UserDetails {
+    + getAuthorities(): Collection<? extends GrantedAuthority>
+    + getPassword(): String
+    + getUsername(): String
+    + isAccountNonExpired(): boolean
+    + isAccountNonLocked(): boolean
+    + isCredentialsNonExpired: boolean
+    + isEnabled(): boolean
+}
+
+GrantedAuthority *-- UserDetails
+
+interface AuthenticationUserDetailsService<T extends Authentication> {
+    + loadUserDetails(T token): UserDetails
+}
+
+UserDetails *-- AuthenticationUserDetailsService
+
+interface UserDetailsChecker {
+    + check(UserDetails toCheck)
+}
+
+UserDetails *-- UserDetailsChecker
+
+class PreAuthenticatedAuthenticationProvider {
+    - preAuthenticatedUserDetailsService: AuthenticationUserDetailsService<T extends Authentication>
+    - userDetailsChecker: UserDetailsChecker
+    - throwExceptionWhenTokenRejected: boolean
+}
+
+note bottom: 这个是 web 应用的前置认证提供类，凭证信息是用 http request 里面获取的，具体的可以看源码说明
+
+UserDetailsChecker *-- PreAuthenticatedAuthenticationProvider
+AuthenticationUserDetailsService *-- PreAuthenticatedAuthenticationProvider
+PreAuthenticatedAuthenticationToken *-- PreAuthenticatedAuthenticationProvider
+UserDetails *-- PreAuthenticatedAuthenticationProvider
+AuthenticationProvider <|-- PreAuthenticatedAuthenticationProvider
+
+
+class UsernamePasswordAuthenticationToken {
+    - principal: Object
+    - credentials: Object
+}
+
+AbstractAuthenticationToken <|-- RememberMeAuthenticationToken
+AbstractAuthenticationToken <|-- AnonymousAuthenticationToken
+AbstractAuthenticationToken <|-- RunAsUserToken
+AbstractAuthenticationToken <|-- UsernamePasswordAuthenticationToken
+AbstractAuthenticationToken <|-- PreAuthenticatedAuthenticationToken
+
+
+
+interface UserCache {
+    + getUserFromCache(String username): UserDetails
+    + putUserInCache(UserDetails user)
+    + removeUserFromCache(String username)
+}
+
+interface GrantedAuthoritiesMapper {
+    + mapAuthorities(Collection<? extends GrantedAuthority> authorities): Collection<? extends GrantedAuthority>
+}
+
+GrantedAuthority *-- GrantedAuthoritiesMapper
+
+abstract class AbstractUserDetailsAuthenticationProvider {
+    - userCache: UserCache
+    - forcePrincipalAsString: boolean
+    - hideUserNotFoundExceptions: boolean
+    - preAuthenticationChecks: UserDetailsChecker
+    - postAuthenticationChecks: UserDetailsChecker
+    - authoritiesMapper: GrantedAuthoritiesMapper
+
+    # additionalAuthenticationChecks(UserDetails userDetails,UsernamePasswordAuthenticationToken authentication)
+    # retrieveUser(String username, UsernamePasswordAuthenticationToken authentication): UserDetails
+}
+note bottom: 这个类是处理 用户名，密码类型的凭证，通常用在后台管理系统里面，对使用者来说，需要提供 UserDetailsService 的实现，作为数据源就可以了
+
+AuthenticationProvider <|-- AbstractUserDetailsAuthenticationProvider
+UserDetails *-- AbstractUserDetailsAuthenticationProvider
+UserCache *-- AbstractUserDetailsAuthenticationProvider
+UsernamePasswordAuthenticationToken *-- AbstractUserDetailsAuthenticationProvider
+
+interface PasswordEncoder {
+    + encode(String rawPassword): String
+    + matches(String rawPassword, String encodedPassword): boolean
+}
+note bottom: 密码存储通常不是明文的，大部分都是 hash
+
+class DelegatingPasswordEncoder {
+    - passwordEncoderForEncode: PasswordEncoder
+    - idToPasswordEncoder: Map<String, PasswordEncoder>
+}
+note bottom: 这里里面是默认的实现，里面有一个 PasswordEncoder 的列表，用来提供各种类型的 hash 策略，通常推荐的是 BCrypt
+
+PasswordEncoder <|-- DelegatingPasswordEncoder
+PasswordEncoder *-- DelegatingPasswordEncoder
+
+interface UserDetailsService {
+    loadUserByUsername(String username): UserDetails
+}
+
+UserDetails *-- UserDetailsService
+
+class DaoAuthenticationProvider {
+    - passwordEncoder: PasswordEncoder
+    - userDetailsService: UserDetailsService
+}
+note bottom: 这个就是默认处理 UsernamePasswordAuthenticationToken 的一个 provider ，需要用户自定义 hash 策略 和 用户数据源
+
+AbstractUserDetailsAuthenticationProvider <|-- DaoAuthenticationProvider
+@enduml
